@@ -4,22 +4,22 @@
 from itertools import product
 
 import numpy as np
+import pytest
 
 from numba import cuda
-from numba.cuda.testing import unittest, CUDATestCase, skip_on_cudasim
-from unittest.mock import patch
+from numba.cuda.testing import skip_on_cudasim
 
 
-class CudaArrayIndexing(CUDATestCase):
+class TestCudaArrayIndexing:
     def test_index_1d(self):
         arr = np.arange(10)
         darr = cuda.to_device(arr)
         (x,) = arr.shape
         for i in range(-x, x):
-            self.assertEqual(arr[i], darr[i])
-        with self.assertRaises(IndexError):
+            assert arr[i] == darr[i]
+        with pytest.raises(IndexError):
             darr[-x - 1]
-        with self.assertRaises(IndexError):
+        with pytest.raises(IndexError):
             darr[x]
 
     def test_index_2d(self):
@@ -28,14 +28,14 @@ class CudaArrayIndexing(CUDATestCase):
         x, y = arr.shape
         for i in range(-x, x):
             for j in range(-y, y):
-                self.assertEqual(arr[i, j], darr[i, j])
-        with self.assertRaises(IndexError):
+                assert arr[i, j] == darr[i, j]
+        with pytest.raises(IndexError):
             darr[-x - 1, 0]
-        with self.assertRaises(IndexError):
+        with pytest.raises(IndexError):
             darr[x, 0]
-        with self.assertRaises(IndexError):
+        with pytest.raises(IndexError):
             darr[0, -y - 1]
-        with self.assertRaises(IndexError):
+        with pytest.raises(IndexError):
             darr[0, y]
 
     def test_index_3d(self):
@@ -45,22 +45,22 @@ class CudaArrayIndexing(CUDATestCase):
         for i in range(-x, x):
             for j in range(-y, y):
                 for k in range(-z, z):
-                    self.assertEqual(arr[i, j, k], darr[i, j, k])
-        with self.assertRaises(IndexError):
+                    assert arr[i, j, k] == darr[i, j, k]
+        with pytest.raises(IndexError):
             darr[-x - 1, 0, 0]
-        with self.assertRaises(IndexError):
+        with pytest.raises(IndexError):
             darr[x, 0, 0]
-        with self.assertRaises(IndexError):
+        with pytest.raises(IndexError):
             darr[0, -y - 1, 0]
-        with self.assertRaises(IndexError):
+        with pytest.raises(IndexError):
             darr[0, y, 0]
-        with self.assertRaises(IndexError):
+        with pytest.raises(IndexError):
             darr[0, 0, -z - 1]
-        with self.assertRaises(IndexError):
+        with pytest.raises(IndexError):
             darr[0, 0, z]
 
 
-class CudaArrayStridedSlice(CUDATestCase):
+class TestCudaArrayStridedSlice:
     def test_strided_index_1d(self):
         arr = np.arange(10)
         darr = cuda.to_device(arr)
@@ -90,14 +90,14 @@ class CudaArrayStridedSlice(CUDATestCase):
                     )
 
 
-class CudaArraySlicing(CUDATestCase):
+class TestCudaArraySlicing:
     def test_prefix_1d(self):
         arr = np.arange(5)
         darr = cuda.to_device(arr)
         for i in range(arr.size):
             expect = arr[i:]
             got = darr[i:].copy_to_host()
-            self.assertTrue(np.all(expect == got))
+            assert np.all(expect == got)
 
     def test_prefix_2d(self):
         arr = np.arange(3**2).reshape(3, 3)
@@ -106,10 +106,10 @@ class CudaArraySlicing(CUDATestCase):
             for j in range(arr.shape[1]):
                 expect = arr[i:, j:]
                 sliced = darr[i:, j:]
-                self.assertEqual(expect.shape, sliced.shape)
-                self.assertEqual(expect.strides, sliced.strides)
+                assert expect.shape == sliced.shape
+                assert expect.strides == sliced.strides
                 got = sliced.copy_to_host()
-                self.assertTrue(np.all(expect == got))
+                assert np.all(expect == got)
 
     def test_select_3d_first_two_dim(self):
         arr = np.arange(3 * 4 * 5).reshape(3, 4, 5)
@@ -118,19 +118,19 @@ class CudaArraySlicing(CUDATestCase):
         for i in range(arr.shape[0]):
             expect = arr[i]
             sliced = darr[i]
-            self.assertEqual(expect.shape, sliced.shape)
-            self.assertEqual(expect.strides, sliced.strides)
+            assert expect.shape == sliced.shape
+            assert expect.strides == sliced.strides
             got = sliced.copy_to_host()
-            self.assertTrue(np.all(expect == got))
+            assert np.all(expect == got)
         # Select second dimension
         for i in range(arr.shape[0]):
             for j in range(arr.shape[1]):
                 expect = arr[i, j]
                 sliced = darr[i, j]
-                self.assertEqual(expect.shape, sliced.shape)
-                self.assertEqual(expect.strides, sliced.strides)
+                assert expect.shape == sliced.shape
+                assert expect.strides == sliced.strides
                 got = sliced.copy_to_host()
-                self.assertTrue(np.all(expect == got))
+                assert np.all(expect == got)
 
     def test_select_f(self):
         a = np.arange(5 * 6 * 7).reshape(5, 6, 7, order="F")
@@ -138,18 +138,12 @@ class CudaArraySlicing(CUDATestCase):
 
         for i in range(a.shape[0]):
             for j in range(a.shape[1]):
-                self.assertTrue(
-                    np.array_equal(da[i, j, :].copy_to_host(), a[i, j, :])
-                )
+                assert np.array_equal(da[i, j, :].copy_to_host(), a[i, j, :])
             for j in range(a.shape[2]):
-                self.assertTrue(
-                    np.array_equal(da[i, :, j].copy_to_host(), a[i, :, j])
-                )
+                assert np.array_equal(da[i, :, j].copy_to_host(), a[i, :, j])
         for i in range(a.shape[1]):
             for j in range(a.shape[2]):
-                self.assertTrue(
-                    np.array_equal(da[:, i, j].copy_to_host(), a[:, i, j])
-                )
+                assert np.array_equal(da[:, i, j].copy_to_host(), a[:, i, j])
 
     def test_select_c(self):
         a = np.arange(5 * 6 * 7).reshape(5, 6, 7, order="C")
@@ -157,24 +151,18 @@ class CudaArraySlicing(CUDATestCase):
 
         for i in range(a.shape[0]):
             for j in range(a.shape[1]):
-                self.assertTrue(
-                    np.array_equal(da[i, j, :].copy_to_host(), a[i, j, :])
-                )
+                assert np.array_equal(da[i, j, :].copy_to_host(), a[i, j, :])
             for j in range(a.shape[2]):
-                self.assertTrue(
-                    np.array_equal(da[i, :, j].copy_to_host(), a[i, :, j])
-                )
+                assert np.array_equal(da[i, :, j].copy_to_host(), a[i, :, j])
         for i in range(a.shape[1]):
             for j in range(a.shape[2]):
-                self.assertTrue(
-                    np.array_equal(da[:, i, j].copy_to_host(), a[:, i, j])
-                )
+                assert np.array_equal(da[:, i, j].copy_to_host(), a[:, i, j])
 
     def test_prefix_select(self):
         arr = np.arange(5 * 7).reshape(5, 7, order="F")
 
         darr = cuda.to_device(arr)
-        self.assertTrue(np.all(darr[:1, 1].copy_to_host() == arr[:1, 1]))
+        assert np.all(darr[:1, 1].copy_to_host() == arr[:1, 1])
 
     def test_negative_slicing_1d(self):
         arr = np.arange(10)
@@ -196,7 +184,7 @@ class CudaArraySlicing(CUDATestCase):
         for i in range(darr.shape[0]):
             np.testing.assert_array_equal(darr[i:i].copy_to_host(), arr[i:i])
         # empty slice of empty slice
-        self.assertFalse(darr[:0][:0].copy_to_host().size > 0)
+        assert not darr[:0][:0].copy_to_host().size > 0
         # out-of-bound slice just produces empty slices
         np.testing.assert_array_equal(darr[:0][:1].copy_to_host(), arr[:0][:1])
         np.testing.assert_array_equal(
@@ -209,7 +197,7 @@ class CudaArraySlicing(CUDATestCase):
         np.testing.assert_array_equal(darr[:0].copy_to_host(), arr[:0])
         np.testing.assert_array_equal(darr[3, :0].copy_to_host(), arr[3, :0])
         # empty slice of empty slice
-        self.assertFalse(darr[:0][:0].copy_to_host().size > 0)
+        assert not darr[:0][:0].copy_to_host().size > 0
         # out-of-bound slice just produces empty slices
         np.testing.assert_array_equal(darr[:0][:1].copy_to_host(), arr[:0][:1])
         np.testing.assert_array_equal(
@@ -217,7 +205,7 @@ class CudaArraySlicing(CUDATestCase):
         )
 
 
-class CudaArraySetting(CUDATestCase):
+class TestCudaArraySetting:
     """
     Most of the slicing logic is tested in the cases above, so these
     tests focus on the setting logic.
@@ -294,91 +282,81 @@ class CudaArraySetting(CUDATestCase):
     def test_incompatible_highdim(self):
         darr = cuda.to_device(np.arange(5 * 7))
 
-        with self.assertRaises(ValueError) as e:
+        with pytest.raises(ValueError) as e:
             darr[:] = np.ones(shape=(1, 2, 3))
 
-        self.assertIn(
-            member=str(e.exception),
-            container=[
-                "Can't assign 3-D array to 1-D self",  # device
-                "could not broadcast input array from shape (2,3) "
-                "into shape (35,)",  # simulator, NP >= 1.20
-            ],
-        )
+        assert str(e.value) in [
+            "Can't assign 3-D array to 1-D self",  # device
+            "could not broadcast input array from shape (2,3) "
+            "into shape (35,)",  # simulator, NP >= 1.20
+        ]
 
     def test_incompatible_shape(self):
         darr = cuda.to_device(np.arange(5))
 
-        with self.assertRaises(ValueError) as e:
+        with pytest.raises(ValueError) as e:
             darr[:] = [1, 3]
 
-        self.assertIn(
-            member=str(e.exception),
-            container=[
-                "Can't copy sequence with size 2 to array axis 0 with "
-                "dimension 5",  # device
-                "could not broadcast input array from shape (2,) into "
-                "shape (5,)",  # simulator, NP >= 1.20
-            ],
-        )
+        assert str(e.value) in [
+            "Can't copy sequence with size 2 to array axis 0 with "
+            "dimension 5",  # device
+            "could not broadcast input array from shape (2,) into "
+            "shape (5,)",  # simulator, NP >= 1.20
+        ]
 
     @skip_on_cudasim("cudasim does not use streams and operates synchronously")
-    def test_sync(self):
+    def test_sync(self, mocker):
         # There should be a synchronization when no stream is supplied
         darr = cuda.to_device(np.arange(5))
-
-        with patch.object(
+        mock_sync = mocker.patch.object(
             cuda.cudadrv.driver.Stream, "synchronize", return_value=None
-        ) as mock_sync:
-            darr[0] = 10
-
+        )
+        darr[0] = 10
         mock_sync.assert_called_once()
 
     @skip_on_cudasim("cudasim does not use streams and operates synchronously")
-    def test_no_sync_default_stream(self):
-        # There should not be a synchronization when the array has a default
-        # stream, whether it is the default stream, the legacy default stream,
-        # the per-thread default stream, or another stream.
-        streams = (
+    # There should not be a synchronization when the array has a default
+    # stream, whether it is the default stream, the legacy default stream,
+    # the per-thread default stream, or another stream.
+    @pytest.mark.parametrize(
+        "stream",
+        [
             cuda.stream(),
             cuda.default_stream(),
             cuda.legacy_default_stream(),
             cuda.per_thread_default_stream(),
+        ],
+    )
+    def test_no_sync_default_stream(self, mocker, stream):
+        darr = cuda.to_device(np.arange(5), stream=stream)
+        mock_sync = mocker.patch.object(
+            cuda.cudadrv.driver.Stream, "synchronize", return_value=None
         )
-
-        for stream in streams:
-            darr = cuda.to_device(np.arange(5), stream=stream)
-
-            with patch.object(
-                cuda.cudadrv.driver.Stream, "synchronize", return_value=None
-            ) as mock_sync:
-                darr[0] = 10
-
-            mock_sync.assert_not_called()
+        darr[0] = 10
+        mock_sync.assert_not_called()
 
     @skip_on_cudasim("cudasim does not use streams and operates synchronously")
-    def test_no_sync_supplied_stream(self):
-        # There should not be a synchronization when a stream is supplied for
-        # the setitem call, whether it is the default stream, the legacy default
-        # stream, the per-thread default stream, or another stream.
-        streams = (
+    # There should not be a synchronization when a stream is supplied for
+    # the setitem call, whether it is the default stream, the legacy default
+    # stream, the per-thread default stream, or another stream.
+    @pytest.mark.parametrize(
+        "stream",
+        [
             cuda.stream(),
             cuda.default_stream(),
             cuda.legacy_default_stream(),
             cuda.per_thread_default_stream(),
+        ],
+    )
+    def test_no_sync_supplied_stream(self, mocker, stream):
+        darr = cuda.to_device(np.arange(5))
+        mock_sync = mocker.patch.object(
+            cuda.cudadrv.driver.Stream, "synchronize", return_value=None
         )
+        darr.setitem(0, 10, stream=stream)
+        mock_sync.assert_not_called()
 
-        for stream in streams:
-            darr = cuda.to_device(np.arange(5))
-
-            with patch.object(
-                cuda.cudadrv.driver.Stream, "synchronize", return_value=None
-            ) as mock_sync:
-                darr.setitem(0, 10, stream=stream)
-
-            mock_sync.assert_not_called()
-
-    @unittest.skip("Requires PR #6367")
+    @pytest.mark.skip(reason="Requires PR #6367")
     def test_issue_6505(self):
         # On Windows, the writes to ary_v would not be visible prior to the
         # assertion, due to the assignment being done with a kernel launch that
@@ -390,8 +368,4 @@ class CudaArraySetting(CUDATestCase):
         ary_v = ary.view("u1")
         ary_v[1] = 1
         ary_v[5] = 1
-        self.assertEqual(sum(ary), 512)
-
-
-if __name__ == "__main__":
-    unittest.main()
+        assert sum(ary) == 512

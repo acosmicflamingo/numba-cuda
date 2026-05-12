@@ -63,6 +63,7 @@ test = [
     "psutil",
     "cffi",
     "pytest>=8,<9",
+    "pytest-mock",
     "pytest-xdist",
     "pytest-benchmark",
     "filecheck",
