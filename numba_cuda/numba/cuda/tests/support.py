@@ -223,6 +223,20 @@ def override_config(name, value):
         setattr(config, name, old_value)
 
 
+@pytest.fixture
+def cuda_test_setup():
+    low_occupancy_warnings = config.CUDA_LOW_OCCUPANCY_WARNINGS
+    warn_on_implicit_copy = config.CUDA_WARN_ON_IMPLICIT_COPY
+
+    config.CUDA_LOW_OCCUPANCY_WARNINGS = 0
+    config.CUDA_WARN_ON_IMPLICIT_COPY = 0
+
+    yield
+
+    config.CUDA_LOW_OCCUPANCY_WARNINGS = low_occupancy_warnings
+    config.CUDA_WARN_ON_IMPLICIT_COPY = warn_on_implicit_copy
+
+
 # This can certainly be divided into two pytest fixtures. However, doing so
 # means developers will have to import both 'test_id_generator' and the fixture
 # returning the itertools.count() generator. Importing could be avoided

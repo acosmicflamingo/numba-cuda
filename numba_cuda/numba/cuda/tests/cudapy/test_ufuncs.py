@@ -16,7 +16,7 @@ from numba.cuda import config, types
 from numba.cuda.testing import skip_on_standalone_numba_cuda
 from numba.cuda.typing.typeof import typeof
 from numba.cuda.np import numpy_support
-from numba.cuda.tests.support import reset_module_warnings
+from numba.cuda.tests.support import cuda_test_setup, reset_module_warnings
 
 
 @pytest.fixture
@@ -73,7 +73,7 @@ def base_inputs():
 
 
 @pytest.fixture(name="inputs")
-def ufunc_setup(base_inputs):
+def ufunc_setup(base_inputs, cuda_test_setup):
     # The basic ufunc test does not set up complex inputs, so we'll add
     # some here for testing with CUDA.
     extended_inputs = [
@@ -142,19 +142,7 @@ def ufunc_setup(base_inputs):
 
     inputs = base_inputs + extended_inputs
 
-    _low_occupancy_warnings = config.CUDA_LOW_OCCUPANCY_WARNINGS
-    _warn_on_implicit_copy = config.CUDA_WARN_ON_IMPLICIT_COPY
-
-    # Disable warnings about low gpu utilization in the test suite
-    config.CUDA_LOW_OCCUPANCY_WARNINGS = 0
-    # Disable warnings about host arrays in the test suite
-    config.CUDA_WARN_ON_IMPLICIT_COPY = 0
-
     yield inputs
-
-    # Restore original warning settings
-    config.CUDA_LOW_OCCUPANCY_WARNINGS = _low_occupancy_warnings
-    config.CUDA_WARN_ON_IMPLICIT_COPY = _warn_on_implicit_copy
 
 
 def basic_ufunc_test(

@@ -3,23 +3,25 @@
 
 import numbers
 
+import pytest
+
 from numba import cuda
-from numba.cuda.testing import unittest, CUDATestCase, skip_on_cudasim
+from numba.cuda.testing import skip_on_cudasim
 from numba.cuda.cudadrv import driver
+from numba.cuda.tests.support import cuda_test_setup
 
 
-class TestContextStack(CUDATestCase):
-    def setUp(self):
-        super().setUp()
-        # Reset before testing
+class TestContextStack:
+    @pytest.fixture(autouse=True)
+    def context_stack_setup(cuda_test_setup):
         cuda.current_context().reset()
 
     def test_gpus_len(self):
-        self.assertGreater(len(cuda.gpus), 0)
+        assert len(cuda.gpus) > 0
 
     def test_gpus_iter(self):
         gpulist = list(cuda.gpus)
-        self.assertGreater(len(gpulist), 0)
+        assert len(gpulist) > 0
 
     def test_gpus_cudevice_indexing(self):
         """Test that CUdevice objects can be used to index into cuda.gpus"""
@@ -29,29 +31,31 @@ class TestContextStack(CUDATestCase):
         device_ids = [device.id for device in cuda.list_devices()]
         for device_id in device_ids:
             with cuda.gpus[device_id]:
-                self.assertEqual(cuda.gpus.current.id, device_id)
+                assert cuda.gpus.current.id == device_id
 
 
-class TestContextAPI(CUDATestCase):
-    def tearDown(self):
-        super().tearDown()
+class TestContextAPI:
+    @pytest.fixture(autouse=True)
+    def context_stack_setup(cuda_test_setup):
         cuda.current_context().reset()
 
     def test_context_memory(self):
         try:
             mem = cuda.current_context().get_memory_info()
         except NotImplementedError:
-            self.skipTest("EMM Plugin does not implement get_memory_info()")
+            pytest.skip(
+                reason="EMM Plugin does not implement get_memory_info()"
+            )
 
-        self.assertIsInstance(mem.free, numbers.Number)
-        self.assertEqual(mem.free, mem[0])
+        assert isinstance(mem.free, numbers.Number)
+        assert mem.free == mem[0]
 
-        self.assertIsInstance(mem.total, numbers.Number)
-        self.assertEqual(mem.total, mem[1])
+        assert isinstance(mem.total, numbers.Number)
+        assert mem.total == mem[1]
 
-        self.assertLessEqual(mem.free, mem.total)
+        assert mem.free <= mem.total
 
-    @unittest.skipIf(len(cuda.gpus) < 2, "need more than 1 gpus")
+    @pytest.mark.skipif(len(cuda.gpus) < 2, reason="need more than 1 gpus")
     @skip_on_cudasim("CUDA HW required")
     def test_forbidden_context_switch(self):
         # Cannot switch context inside a `cuda.require_context`
@@ -61,12 +65,12 @@ class TestContextAPI(CUDATestCase):
                 pass
 
         with cuda.gpus[0]:
-            with self.assertRaises(RuntimeError) as raises:
+            with pytest.raises(RuntimeError) as raises:
                 switch_gpu()
 
-            self.assertIn("Cannot switch CUDA-context.", str(raises.exception))
+            assert "Cannot switch CUDA-context." in str(raises.value)
 
-    @unittest.skipIf(len(cuda.gpus) < 2, "need more than 1 gpus")
+    @pytest.mark.skipif(len(cuda.gpus) < 2, reason="need more than 1 gpus")
     def test_accepted_context_switch(self):
         def switch_gpu():
             with cuda.gpus[1]:
@@ -74,11 +78,11 @@ class TestContextAPI(CUDATestCase):
 
         with cuda.gpus[0]:
             devid = switch_gpu()
-        self.assertEqual(int(devid), 1)
+        assert int(devid) == 1
 
 
 @skip_on_cudasim("CUDA HW required")
-class TestContextLeak(CUDATestCase):
+class TestContextLeak:
     """Regression tests for context leaks from the gpu context manager."""
 
     def test_gpus_context_manager_does_not_leak(self):
@@ -95,9 +99,8 @@ class TestContextLeak(CUDATestCase):
 
         # After exiting the context manager the current context must be null.
         with the_driver.get_active_context() as ac:
-            self.assertIsNone(
-                ac.context_handle,
-                "CUDA context leaked after exiting cuda.gpus context manager",
+            assert ac.context_handle is None, (
+                "CUDA context leaked after exiting cuda.gpus context manager"
             )
 
     def test_gpus_context_manager_restores_previous_context(self):
@@ -113,19 +116,17 @@ class TestContextLeak(CUDATestCase):
             pass
 
         with the_driver.get_active_context() as ac:
-            self.assertIsNotNone(ac.context_handle)
-            self.assertEqual(
-                int(ac.context_handle),
-                outer_handle,
+            assert ac.context_handle is not None
+            assert int(ac.context_handle) == outer_handle, (
                 "Previous context was not restored after exiting "
                 "cuda.gpus context manager",
             )
 
 
 @skip_on_cudasim("CUDA HW required")
-class Test3rdPartyContext(CUDATestCase):
-    def tearDown(self):
-        super().tearDown()
+class Test3rdPartyContext:
+    @pytest.fixture(autouse=True)
+    def context_stack_setup(cuda_test_setup):
         cuda.current_context().reset()
 
     def test_attached_primary(self, extra_work=lambda: None):
@@ -139,7 +140,7 @@ class Test3rdPartyContext(CUDATestCase):
             # Check that the context from numba matches the created primary
             # context.
             my_ctx = cuda.current_context()
-            self.assertEqual(int(my_ctx.handle), int(ctx.handle))
+            assert int(my_ctx.handle) == int(ctx.handle)
 
             extra_work()
         finally:
@@ -153,10 +154,8 @@ class Test3rdPartyContext(CUDATestCase):
         dev = driver.binding.CUdevice(0)
 
         result, version = driver.binding.cuDriverGetVersion()
-        self.assertEqual(
-            result,
-            driver.binding.CUresult.CUDA_SUCCESS,
-            "Error getting CUDA driver version",
+        assert result == driver.binding.CUresult.CUDA_SUCCESS, (
+            "Error getting CUDA driver version"
         )
 
         # CUDA 13's cuCtxCreate has an optional parameter prepended. The
@@ -176,11 +175,9 @@ class Test3rdPartyContext(CUDATestCase):
             cuda.current_context()
         except RuntimeError as e:
             # Expecting an error about non-primary CUDA context
-            self.assertIn(
-                "Numba cannot operate on non-primary CUDA context ", str(e)
-            )
+            assert "Numba cannot operate on non-primary CUDA context " in str(e)
         else:
-            self.fail("No RuntimeError raised")
+            pytest.fail("No RuntimeError raised")
         finally:
             the_driver.cuCtxDestroy(hctx)
 
@@ -195,10 +192,6 @@ class Test3rdPartyContext(CUDATestCase):
 
             a = cuda.device_array(10)
             foo[1, 1](a)
-            self.assertEqual(list(a.copy_to_host()), list(range(10)))
+            assert list(a.copy_to_host()) == list(range(10))
 
         self.test_attached_primary(do)
-
-
-if __name__ == "__main__":
-    unittest.main()
