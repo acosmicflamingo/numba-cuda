@@ -1,15 +1,18 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: BSD-2-Clause
 
-import numpy as np
 import ctypes
+
+import numpy as np
+import pytest
+
 from numba.cuda.cudadrv.devicearray import (
     DeviceRecord,
     from_record_like,
     auto_device,
 )
-from numba.cuda.testing import unittest, CUDATestCase
 from numba.cuda.testing import skip_on_cudasim
+from numba.cuda.tests.support import cuda_test_setup
 from numba.cuda.np import numpy_support
 from numba import cuda
 
@@ -32,33 +35,36 @@ recwithmat = np.dtype([("i", np.int32), ("j", np.float32, (3, 3))])
 recwithrecwithmat = np.dtype([("x", np.int32), ("y", recwithmat)])
 
 
+def _create_data(array_ctor):
+    dtype = np.dtype([("a", np.int32), ("b", np.float32)], align=True)
+    hostz = array_ctor(1, dtype)[0]
+    hostnz = array_ctor(1, dtype)[0]
+    hostnz["a"] = 10
+    hostnz["b"] = 11.0
+    return dtype, hostz, hostnz
+
+
 @skip_on_cudasim("Device Record API unsupported in the simulator")
-class TestCudaDeviceRecord(CUDATestCase):
+@pytest.mark.parametrize("array_ctor", [np.zeros, np.recarray])
+class TestCudaDeviceRecord:
     """
     Tests the DeviceRecord class with np.void host types.
     """
 
-    def setUp(self):
-        super().setUp()
-        self._create_data(np.zeros)
-
-    def _create_data(self, array_ctor):
-        self.dtype = np.dtype([("a", np.int32), ("b", np.float32)], align=True)
-        self.hostz = array_ctor(1, self.dtype)[0]
-        self.hostnz = array_ctor(1, self.dtype)[0]
-        self.hostnz["a"] = 10
-        self.hostnz["b"] = 11.0
+    @pytest.fixture(autouse=True)
+    def setUp(self, cuda_test_setup, array_ctor):
+        self.dtype, self.hostz, self.hostnz = _create_data(array_ctor)
 
     def _check_device_record(self, reference, rec):
-        self.assertEqual(rec.shape, tuple())
-        self.assertEqual(rec.strides, tuple())
-        self.assertEqual(rec.dtype, reference.dtype)
-        self.assertEqual(rec.alloc_size, reference.dtype.itemsize)
-        self.assertIsNotNone(rec.gpu_data)
-        self.assertNotEqual(rec.device_ctypes_pointer, ctypes.c_void_p(0))
+        assert rec.shape == tuple()
+        assert rec.strides == tuple()
+        assert rec.dtype == reference.dtype
+        assert rec.alloc_size == reference.dtype.itemsize
+        assert rec.gpu_data is not None
+        assert rec.device_ctypes_pointer != ctypes.c_void_p(0)
 
         numba_type = numpy_support.from_dtype(reference.dtype)
-        self.assertEqual(rec._numba_type_, numba_type)
+        assert rec._numba_type_ == numba_type
 
     def test_device_record_interface(self):
         hostrec = self.hostz.copy()
@@ -92,14 +98,14 @@ class TestCudaDeviceRecord(CUDATestCase):
         # Create record from device record and check for distinct data
         devrec2 = from_record_like(devrec)
         self._check_device_record(devrec, devrec2)
-        self.assertNotEqual(devrec.gpu_data, devrec2.gpu_data)
+        assert devrec.gpu_data != devrec2.gpu_data
 
     def test_auto_device(self):
         # Create record from host record
         hostrec = self.hostnz.copy()
         devrec, new_gpu_obj = auto_device(hostrec)
         self._check_device_record(hostrec, devrec)
-        self.assertTrue(new_gpu_obj)
+        assert new_gpu_obj
 
         # Copy data back and check it is equal to auto_device arg
         hostrec2 = self.hostz.copy()
@@ -107,18 +113,8 @@ class TestCudaDeviceRecord(CUDATestCase):
         np.testing.assert_equal(hostrec2, hostrec)
 
 
-class TestCudaDeviceRecordWithRecord(TestCudaDeviceRecord):
-    """
-    Tests the DeviceRecord class with np.record host types
-    """
-
-    def setUp(self):
-        CUDATestCase.setUp(self)
-        self._create_data(np.recarray)
-
-
 @skip_on_cudasim("Structured array attr access not supported in simulator")
-class TestRecordDtypeWithStructArrays(CUDATestCase):
+class TestRecordDtypeWithStructArrays:
     """
     Test operation of device arrays on structured arrays.
     """
@@ -128,8 +124,8 @@ class TestRecordDtypeWithStructArrays(CUDATestCase):
         self.samplerec1darr = cuda.device_array(1, dtype=recordwitharray)[0]
         self.samplerecmat = cuda.device_array(1, dtype=recwithmat)[0]
 
-    def setUp(self):
-        super().setUp()
+    @pytest.fixture(autouse=True)
+    def setUp(self, cuda_test_setup):
         self._createSampleArrays()
 
         ary = self.sample1d
@@ -144,19 +140,19 @@ class TestRecordDtypeWithStructArrays(CUDATestCase):
         ary = self.sample1d
         for i in range(self.sample1d.size):
             x = i + 1
-            self.assertEqual(ary[i]["a"], x / 2)
-            self.assertEqual(ary[i]["b"], x)
-            self.assertEqual(ary[i]["c"], x * 1j)
-            self.assertEqual(ary[i]["d"], str(x) * N_CHARS)
+            assert ary[i]["a"] == x / 2
+            assert ary[i]["b"] == x
+            assert ary[i]["c"] == x * 1j
+            assert ary[i]["d"] == str(x) * N_CHARS
 
     def test_structured_array2(self):
         ary = self.samplerec1darr
         ary["g"] = 2
         ary["h"][0] = 3.0
         ary["h"][1] = 4.0
-        self.assertEqual(ary["g"], 2)
-        self.assertEqual(ary["h"][0], 3.0)
-        self.assertEqual(ary["h"][1], 4.0)
+        assert ary["g"] == 2
+        assert ary["h"][0] == 3.0
+        assert ary["h"][1] == 4.0
 
     def test_structured_array3(self):
         ary = self.samplerecmat
@@ -171,10 +167,6 @@ class TestRecordDtypeWithStructArrays(CUDATestCase):
         arr = np.zeros(1, dtype=recwithrecwithmat)
         d_arr = cuda.to_device(arr)
         d_arr[0]["y"]["i"] = 1
-        self.assertEqual(d_arr[0]["y"]["i"], 1)
+        assert d_arr[0]["y"]["i"] == 1
         d_arr[0]["y"]["j"][0, 0] = 2.0
-        self.assertEqual(d_arr[0]["y"]["j"][0, 0], 2.0)
-
-
-if __name__ == "__main__":
-    unittest.main()
+        assert d_arr[0]["y"]["j"][0, 0] == 2.0

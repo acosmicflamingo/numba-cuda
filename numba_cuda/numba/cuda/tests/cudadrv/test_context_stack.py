@@ -126,7 +126,7 @@ class TestContextLeak:
 @skip_on_cudasim("CUDA HW required")
 class Test3rdPartyContext:
     @pytest.fixture(autouse=True)
-    def context_stack_setup(cuda_test_setup):
+    def setUp(cuda_test_setup):
         cuda.current_context().reset()
 
     def test_attached_primary(self, extra_work=lambda: None):
