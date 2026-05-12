@@ -3,12 +3,11 @@
 
 import numpy as np
 from numba import cuda
-from numba.cuda.testing import unittest, CUDATestCase
 from cuda.core import Device
 from numba.cuda.testing import skip_on_cudasim
 
 
-class TestCudaEvent(CUDATestCase):
+class TestCudaEvent:
     def test_event_elapsed(self):
         N = 32
         dary = cuda.device_array(N, dtype=np.double)
@@ -47,7 +46,3 @@ class TestCudaEvent(CUDATestCase):
         evtend.synchronize()
         # Exercise the code path
         evtstart.elapsed_time(evtend)
-
-
-if __name__ == "__main__":
-    unittest.main()

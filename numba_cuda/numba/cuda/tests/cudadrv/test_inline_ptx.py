@@ -4,12 +4,11 @@
 from llvmlite import ir
 
 from numba.cuda.cudadrv import nvvm
-from numba.cuda.testing import unittest, CUDATestCase
 from numba.cuda.testing import skip_on_cudasim
 
 
 @skip_on_cudasim("Inline PTX cannot be used in the simulator")
-class TestCudaInlineAsm(CUDATestCase):
+class TestCudaInlineAsm:
     def test_inline_rsqrt(self):
         mod = ir.Module(__name__)
         mod.triple = "nvptx64-nvidia-cuda"
@@ -36,8 +35,4 @@ class TestCudaInlineAsm(CUDATestCase):
         nvvm.set_cuda_kernel(fn)
         nvvmir = str(mod)
         ptx = nvvm.compile_ir(nvvmir)
-        self.assertTrue("rsqrt.approx.f32" in str(ptx))
-
-
-if __name__ == "__main__":
-    unittest.main()
+        assert "rsqrt.approx.f32" in str(ptx)

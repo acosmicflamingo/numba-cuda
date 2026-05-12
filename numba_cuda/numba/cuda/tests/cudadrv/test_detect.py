@@ -5,38 +5,39 @@ import os
 import sys
 import subprocess
 import threading
+
+import pytest
+
 from numba import cuda
 from numba.cuda.testing import (
-    unittest,
-    CUDATestCase,
     skip_on_cudasim,
     skip_under_cuda_memcheck,
 )
 from numba.cuda.tests.support import captured_stdout
 
 
-class TestCudaDetect(CUDATestCase):
+class TestCudaDetect:
     def test_cuda_detect(self):
         # exercise the code path
         with captured_stdout() as out:
             cuda.detect()
         output = out.getvalue()
-        self.assertIn("Found", output)
-        self.assertIn("CUDA devices", output)
+        assert "Found" in output
+        assert "CUDA devices" in output
 
 
-class TestSupportedVersion(CUDATestCase):
+class TestSupportedVersion:
     def test_is_supported_version(self):
         # Exercise the `cuda.is_supported_version()` API.
         #
         # Assume for the purpose of the test that we're running on a supported
         # toolkit version; if not, there's not much point in running the test
         # suite.
-        self.assertTrue(cuda.is_supported_version())
+        assert cuda.is_supported_version()
 
 
 @skip_under_cuda_memcheck("Hangs cuda-memcheck")
-class TestCUDAFindLibs(CUDATestCase):
+class TestCUDAFindLibs:
     def run_cmd(self, cmdline, env):
         popen = subprocess.Popen(
             cmdline, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env
@@ -67,7 +68,9 @@ class TestCUDAFindLibs(CUDATestCase):
         return self.run_cmd(cmdline, env_copy)
 
     @skip_on_cudasim("Simulator does not hit device library search code path")
-    @unittest.skipIf(not sys.platform.startswith("linux"), "linux only")
+    @pytest.mark.skipif(
+        not sys.platform.startswith("linux"), reason="linux only"
+    )
     def test_cuda_find_lib_errors(self):
         """
         This tests that driver discovery attempts to load from typical system
@@ -92,9 +95,5 @@ class TestCUDAFindLibs(CUDATestCase):
             out, err = self.run_test_in_separate_process(
                 "DUMMY_UNUSED", looking_for
             )
-            self.assertTrue(out is not None)
-            self.assertTrue(err is not None)
-
-
-if __name__ == "__main__":
-    unittest.main()
+            assert out is not None
+            assert err is not None

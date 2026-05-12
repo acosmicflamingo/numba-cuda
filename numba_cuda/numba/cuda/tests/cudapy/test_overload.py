@@ -371,13 +371,11 @@ class TestOverload:
         else:
             msg = "Unknown attribute 'cuda_only'"
 
-        with pytest.raises(TypingError) as exc_info:
+        with pytest.raises(TypingError, match=msg):
 
             @njit(types.int64(mydummy_type_cpu))
             def illegal_target_attr_use(x):
                 return x.cuda_only
-
-        assert exc_info.type is TypingError
 
         # Ensure that the CUDA target-specific attribute is usable and works
         # correctly when the target is CUDA - note eager compilation via

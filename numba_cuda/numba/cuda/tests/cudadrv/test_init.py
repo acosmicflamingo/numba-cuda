@@ -8,7 +8,7 @@ import os
 from numba import cuda
 from numba.cuda.cudadrv.driver import CudaAPIError, driver
 from numba.cuda.cudadrv.error import CudaSupportError
-from numba.cuda.testing import skip_on_cudasim, unittest, CUDATestCase
+from numba.cuda.testing import skip_on_cudasim
 
 
 # A mock of cuInit that always raises a CudaAPIError
@@ -83,7 +83,7 @@ def cuda_disabled_error_test():
 
 
 @skip_on_cudasim("CUDA Simulator does not initialize driver")
-class TestInit(CUDATestCase):
+class TestInit:
     def _test_init_failure(self, target, expected):
         # Run the initialization failure test in a separate subprocess
         with concurrent.futures.ProcessPoolExecutor(
@@ -131,8 +131,4 @@ class TestInit(CUDATestCase):
         # Here we assume that initialization is successful (because many bad
         # things will happen with the test suite if it is not) and check that
         # there is no error recorded.
-        self.assertIsNone(cuda.cuda_error())
-
-
-if __name__ == "__main__":
-    unittest.main()
+        assert cuda.cuda_error() is None

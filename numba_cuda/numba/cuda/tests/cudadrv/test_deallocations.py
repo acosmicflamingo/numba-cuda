@@ -4,33 +4,32 @@
 from contextlib import contextmanager
 
 import numpy as np
+import pytest
 
 from numba import cuda
 from numba.cuda.testing import (
-    unittest,
     skip_on_cudasim,
     skip_if_external_memmgr,
-    CUDATestCase,
 )
 from numba.cuda.tests.support import captured_stderr
 from numba.cuda.core import config
 
 
 @skip_on_cudasim("not supported on CUDASIM")
-class TestDeallocation(CUDATestCase):
+class TestDeallocation:
     @skip_if_external_memmgr("Deallocation specific to Numba memory management")
     def test_max_pending_count(self):
         # get deallocation manager and flush it
         deallocs = cuda.current_context().memory_manager.deallocations
         deallocs.clear()
-        self.assertEqual(len(deallocs), 0)
+        assert len(deallocs) == 0
         # deallocate to maximum count
         for i in range(config.CUDA_DEALLOCS_COUNT):
             cuda.to_device(np.arange(1))
-            self.assertEqual(len(deallocs), i + 1)
+            assert len(deallocs) == i + 1
         # one more to trigger .clear()
         cuda.to_device(np.arange(1))
-        self.assertEqual(len(deallocs), 0)
+        assert len(deallocs) == 0
 
     @skip_if_external_memmgr("Deallocation specific to Numba memory management")
     def test_max_pending_bytes(self):
@@ -38,7 +37,7 @@ class TestDeallocation(CUDATestCase):
         ctx = cuda.current_context()
         deallocs = ctx.memory_manager.deallocations
         deallocs.clear()
-        self.assertEqual(len(deallocs), 0)
+        assert len(deallocs) == 0
 
         mi = ctx.get_memory_info()
 
@@ -49,14 +48,14 @@ class TestDeallocation(CUDATestCase):
             config.CUDA_DEALLOCS_RATIO = max_pending / mi.total
             # due to round off error (floor is used in calculating
             # _max_pending_bytes) it can be off by 1.
-            self.assertAlmostEqual(
-                deallocs._max_pending_bytes, max_pending, delta=1
+            assert deallocs._max_pending_bytes == pytest.approx(
+                max_pending, abs=1
             )
 
             # allocate half the max size
             # this will not trigger deallocation
             cuda.to_device(np.ones(max_pending // 2, dtype=np.int8))
-            self.assertEqual(len(deallocs), 1)
+            assert len(deallocs) == 1
 
             # allocate another remaining
             # this will not trigger deallocation
@@ -65,11 +64,11 @@ class TestDeallocation(CUDATestCase):
                     deallocs._max_pending_bytes - deallocs._size, dtype=np.int8
                 )
             )
-            self.assertEqual(len(deallocs), 2)
+            assert len(deallocs) == 2
 
             # another byte to trigger .clear()
             cuda.to_device(np.ones(1, dtype=np.int8))
-            self.assertEqual(len(deallocs), 0)
+            assert len(deallocs) == 0
         finally:
             # restore old ratio
             config.CUDA_DEALLOCS_RATIO = old_ratio
@@ -80,18 +79,18 @@ class TestDeallocation(CUDATestCase):
         darr1 = cuda.to_device(harr)
         deallocs = cuda.current_context().memory_manager.deallocations
         deallocs.clear()
-        self.assertEqual(len(deallocs), 0)
+        assert len(deallocs) == 0
         with cuda.defer_cleanup():
             darr2 = cuda.to_device(harr)
             del darr1
-            self.assertEqual(len(deallocs), 1)
+            assert len(deallocs) == 1
             del darr2
-            self.assertEqual(len(deallocs), 2)
+            assert len(deallocs) == 2
             deallocs.clear()
-            self.assertEqual(len(deallocs), 2)
+            assert len(deallocs) == 2
 
         deallocs.clear()
-        self.assertEqual(len(deallocs), 0)
+        assert len(deallocs) == 0
 
     @skip_if_external_memmgr("Deallocation specific to Numba memory management")
     def test_nested_defer_cleanup(self):
@@ -99,21 +98,21 @@ class TestDeallocation(CUDATestCase):
         darr1 = cuda.to_device(harr)
         deallocs = cuda.current_context().memory_manager.deallocations
         deallocs.clear()
-        self.assertEqual(len(deallocs), 0)
+        assert len(deallocs) == 0
         with cuda.defer_cleanup():
             with cuda.defer_cleanup():
                 darr2 = cuda.to_device(harr)
                 del darr1
-                self.assertEqual(len(deallocs), 1)
+                assert len(deallocs) == 1
                 del darr2
-                self.assertEqual(len(deallocs), 2)
+                assert len(deallocs) == 2
                 deallocs.clear()
-                self.assertEqual(len(deallocs), 2)
+                assert len(deallocs) == 2
             deallocs.clear()
-            self.assertEqual(len(deallocs), 2)
+            assert len(deallocs) == 2
 
         deallocs.clear()
-        self.assertEqual(len(deallocs), 0)
+        assert len(deallocs) == 0
 
     @skip_if_external_memmgr("Deallocation specific to Numba memory management")
     def test_exception(self):
@@ -121,32 +120,32 @@ class TestDeallocation(CUDATestCase):
         darr1 = cuda.to_device(harr)
         deallocs = cuda.current_context().memory_manager.deallocations
         deallocs.clear()
-        self.assertEqual(len(deallocs), 0)
+        assert len(deallocs) == 0
 
         class CustomError(Exception):
             pass
 
-        with self.assertRaises(CustomError):
+        with pytest.raises(CustomError):
             with cuda.defer_cleanup():
                 darr2 = cuda.to_device(harr)
                 del darr2
-                self.assertEqual(len(deallocs), 1)
+                assert len(deallocs) == 1
                 deallocs.clear()
-                self.assertEqual(len(deallocs), 1)
+                assert len(deallocs) == 1
                 raise CustomError
         deallocs.clear()
-        self.assertEqual(len(deallocs), 0)
+        assert len(deallocs) == 0
         del darr1
-        self.assertEqual(len(deallocs), 1)
+        assert len(deallocs) == 1
         deallocs.clear()
-        self.assertEqual(len(deallocs), 0)
+        assert len(deallocs) == 0
 
     @contextmanager
     def check_ignored_exception(self, ctx):
         with captured_stderr() as cap:
             yield
             ctx.deallocations.clear()
-        self.assertFalse(cap.getvalue())
+        assert not cap.getvalue()
 
     def test_del_stream(self):
         ctx = cuda.current_context()
@@ -241,7 +240,3 @@ class TestDeallocation(CUDATestCase):
             except MappedException:
                 with cuda.mapped(arr):
                     pass
-
-
-if __name__ == "__main__":
-    unittest.main()
