@@ -4,28 +4,29 @@
 import ctypes
 
 import numpy as np
+import pytest
 
 from numba.cuda.cudadrv import driver, devices
-from numba.cuda.testing import unittest, CUDATestCase
 from numba.cuda.testing import skip_on_cudasim
+from numba.cuda.tests.support import cuda_test_setup
 
 
 @skip_on_cudasim("CUDA Memory API unsupported in the simulator")
-class TestCudaMemory(CUDATestCase):
-    def setUp(self):
-        super().setUp()
+class TestCudaMemory:
+    @pytest.fixture(autouse=True)
+    def configure(self, cuda_test_setup):
         self.context = devices.get_context()
 
-    def tearDown(self):
+        yield
+
         self.context.reset()
         del self.context
-        super().tearDown()
 
     def _template(self, obj):
-        self.assertTrue(driver.is_device_memory(obj))
+        assert driver.is_device_memory(obj)
         driver.require_device_memory(obj)
         expected_class = ctypes.c_size_t
-        self.assertTrue(isinstance(obj.device_ctypes_pointer, expected_class))
+        assert isinstance(obj.device_ctypes_pointer, expected_class)
 
     def test_device_memory(self):
         devmem = self.context.memalloc(1024)
@@ -59,19 +60,19 @@ class TestCudaMemory(CUDATestCase):
         def check(m, offset):
             # create view
             v1 = m.view(offset)
-            self.assertEqual(handle_val(v1.owner), handle_val(m))
-            self.assertEqual(m.refct, 2)
-            self.assertEqual(handle_val(v1) - offset, handle_val(v1.owner))
+            assert handle_val(v1.owner) == handle_val(m)
+            assert m.refct == 2
+            assert handle_val(v1) - offset == handle_val(v1.owner)
             # create a view
             v2 = v1.view(offset)
-            self.assertEqual(handle_val(v2.owner), handle_val(m))
-            self.assertEqual(handle_val(v2.owner), handle_val(m))
-            self.assertEqual(handle_val(v2) - offset * 2, handle_val(v2.owner))
-            self.assertEqual(m.refct, 3)
+            assert handle_val(v2.owner) == handle_val(m)
+            assert handle_val(v2.owner) == handle_val(m)
+            assert handle_val(v2) - offset * 2 == handle_val(v2.owner)
+            assert m.refct == 3
             del v2
-            self.assertEqual(m.refct, 2)
+            assert m.refct == 2
             del v1
-            self.assertEqual(m.refct, 1)
+            assert m.refct == 1
 
         m = self.context.memalloc(1024)
         check(m=m, offset=0)
@@ -90,9 +91,9 @@ class TestCudaMemory(CUDATestCase):
         ptr = driver.MemoryPointer(
             context=self.context, pointer=fake_ptr, size=40, finalizer=dtor
         )
-        self.assertEqual(dtor_invoked[0], 0)
+        assert dtor_invoked[0] == 0
         del ptr
-        self.assertEqual(dtor_invoked[0], 1)
+        assert dtor_invoked[0] == 1
 
         # Ensure removing derived pointer doesn't call finalizer
         ptr = driver.MemoryPointer(
@@ -100,19 +101,20 @@ class TestCudaMemory(CUDATestCase):
         )
         owned = ptr.own()
         del owned
-        self.assertEqual(dtor_invoked[0], 1)
+        assert dtor_invoked[0] == 1
         del ptr
-        self.assertEqual(dtor_invoked[0], 2)
+        assert dtor_invoked[0] == 2
 
 
-class TestCudaMemoryFunctions(CUDATestCase):
-    def setUp(self):
-        super().setUp()
+class TestCudaMemoryFunctions:
+    @pytest.fixture(autouse=True)
+    def configure(self, cuda_test_setup):
         self.context = devices.get_context()
 
-    def tearDown(self):
+        yield
+
+        self.context.reset()
         del self.context
-        super().tearDown()
 
     def test_memcpy(self):
         hstary = np.arange(100, dtype=np.uint32)
@@ -123,7 +125,7 @@ class TestCudaMemoryFunctions(CUDATestCase):
         driver.host_to_device(devary, hstary, sz)
         driver.device_to_host(hstary2, devary, sz)
 
-        self.assertTrue(np.all(hstary == hstary2))
+        assert np.all(hstary == hstary2)
 
     def test_memset(self):
         dtype = np.dtype("uint32")
@@ -136,7 +138,7 @@ class TestCudaMemoryFunctions(CUDATestCase):
         driver.device_to_host(hstary, devary, sz)
 
         hstary2 = np.array([0xABABABAB] * n, dtype=np.dtype("uint32"))
-        self.assertTrue(np.all(hstary == hstary2))
+        assert np.all(hstary == hstary2)
 
     def test_d2d(self):
         hst = np.arange(100, dtype=np.uint32)
@@ -147,31 +149,31 @@ class TestCudaMemoryFunctions(CUDATestCase):
         driver.host_to_device(dev1, hst, sz)
         driver.device_to_device(dev2, dev1, sz)
         driver.device_to_host(hst2, dev2, sz)
-        self.assertTrue(np.all(hst == hst2))
+        assert np.all(hst == hst2)
 
 
 @skip_on_cudasim("CUDA Memory API unsupported in the simulator")
-class TestMVExtent(CUDATestCase):
+class TestMVExtent:
     def test_c_contiguous_array(self):
         ary = np.arange(100)
         arysz = ary.dtype.itemsize * ary.size
         s, e = driver.host_memory_extents(ary)
-        self.assertTrue(ary.ctypes.data == s)
-        self.assertTrue(arysz == driver.host_memory_size(ary))
+        assert ary.ctypes.data == s
+        assert arysz == driver.host_memory_size(ary)
 
     def test_f_contiguous_array(self):
         ary = np.asfortranarray(np.arange(100).reshape(2, 50))
         arysz = ary.dtype.itemsize * np.prod(ary.shape)
         s, e = driver.host_memory_extents(ary)
-        self.assertTrue(ary.ctypes.data == s)
-        self.assertTrue(arysz == driver.host_memory_size(ary))
+        assert ary.ctypes.data == s
+        assert arysz == driver.host_memory_size(ary)
 
     def test_single_element_array(self):
         ary = np.asarray(np.uint32(1234))
         arysz = ary.dtype.itemsize
         s, e = driver.host_memory_extents(ary)
-        self.assertTrue(ary.ctypes.data == s)
-        self.assertTrue(arysz == driver.host_memory_size(ary))
+        assert ary.ctypes.data == s
+        assert arysz == driver.host_memory_size(ary)
 
     def test_ctypes_struct(self):
         class mystruct(ctypes.Structure):
@@ -179,13 +181,9 @@ class TestMVExtent(CUDATestCase):
 
         data = mystruct(x=123, y=432)
         sz = driver.host_memory_size(data)
-        self.assertTrue(ctypes.sizeof(data) == sz)
+        assert ctypes.sizeof(data) == sz
 
     def test_ctypes_double(self):
         data = ctypes.c_double(1.234)
         sz = driver.host_memory_size(data)
-        self.assertTrue(ctypes.sizeof(data) == sz)
-
-
-if __name__ == "__main__":
-    unittest.main()
+        assert ctypes.sizeof(data) == sz
