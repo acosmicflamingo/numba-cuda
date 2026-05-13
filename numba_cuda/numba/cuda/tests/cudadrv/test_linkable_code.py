@@ -1,31 +1,22 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: BSD-2-Clause
 
-import os
-
 import pytest
 
 from numba import cuda
 from numba.cuda.cudadrv.linkable_code import LinkableCode
 from numba.cuda.testing import skip_on_cudasim
 
-TEST_BIN_DIR = os.getenv("NUMBA_CUDA_TEST_BIN_DIR")
-
-
-def bin_path(filename):
-    return os.path.join(TEST_BIN_DIR, filename) if TEST_BIN_DIR else None
-
-
-test_device_functions_a = bin_path("test_device_functions.a")
-test_device_functions_cubin = bin_path("test_device_functions.cubin")
-test_device_functions_cu = bin_path("test_device_functions.cu")
-test_device_functions_fatbin = bin_path("test_device_functions.fatbin")
-test_device_functions_fatbin_multi = bin_path(
-    "test_device_functions_multi.fatbin"
+from .cuda_bin_dirs import (
+    TEST_BIN_DIR,
+    test_device_functions_a,
+    test_device_functions_cubin,
+    test_device_functions_cu,
+    test_device_functions_fatbin,
+    test_device_functions_o,
+    test_device_functions_ptx,
+    test_device_functions_ltoir,
 )
-test_device_functions_o = bin_path("test_device_functions.o")
-test_device_functions_ptx = bin_path("test_device_functions.ptx")
-test_device_functions_ltoir = bin_path("test_device_functions.ltoir")
 
 
 class TestLinkableCode:
