@@ -3,7 +3,10 @@
 
 from ctypes import c_int, sizeof
 import cffi
+import re
+
 import numpy as np
+import pytest
 
 from numba.cuda.cudadrv.driver import host_to_device, device_to_host, driver
 from cuda.core import (
@@ -15,9 +18,9 @@ from cuda.core import (
 
 from numba import cuda
 from numba.cuda.cudadrv import devices, nvrtc
-from numba.cuda.testing import unittest, CUDATestCase, skip_unless_cc_90
+from numba.cuda.testing import skip_unless_cc_90
 from numba.cuda.testing import skip_on_cudasim
-from numba.cuda.tests.support import override_config
+from numba.cuda.tests.support import cuda_test_setup, override_config
 from numba.core import types
 import contextlib
 
@@ -75,11 +78,29 @@ ptx2 = """
 """
 
 
+@pytest.fixture
+def cufunc_setup():
+    from numba import types
+    import numpy as np
+
+    sig = (types.float32[::1], types.float32[::1])
+
+    @cuda.jit(sig)
+    def add_one(r, x):
+        i = cuda.grid(1)
+        if i < len(r):
+            r[i] = x[i] + 1
+
+    kernel = add_one.overloads[sig]
+    cufunc = kernel._codelibrary.get_cufunc()
+    return cufunc, add_one
+
+
 @skip_on_cudasim("CUDA Driver API unsupported in the simulator")
-class TestCudaDriver(CUDATestCase):
-    def setUp(self):
-        super().setUp()
-        self.assertTrue(len(devices.gpus) > 0)
+class TestCudaDriver:
+    @pytest.fixture(autouse=True)
+    def configure(self, cuda_test_setup):
+        assert len(devices.gpus) > 0
         self.context = devices.get_context()
         device = self.context.device
         ccmajor, _ = device.compute_capability
@@ -88,8 +109,8 @@ class TestCudaDriver(CUDATestCase):
         else:
             self.ptx = ptx1
 
-    def tearDown(self):
-        super().tearDown()
+        yield
+
         del self.context
 
     def test_cuda_driver_basic(self):
@@ -225,39 +246,39 @@ class TestCudaDriver(CUDATestCase):
     def test_cuda_driver_default_stream(self):
         # Test properties of the default stream
         ds = self.context.get_default_stream()
-        self.assertIn("Default CUDA stream", repr(ds))
-        self.assertEqual(0, ds.__cuda_stream__()[1])
+        assert "Default CUDA stream" in repr(ds)
+        assert 0 == ds.__cuda_stream__()[1]
         # bool(stream) is the check that is done in memcpy to decide if async
         # version should be used. So the default (0) stream should be true-ish
         # even though 0 is usually false-ish in Python.
-        self.assertTrue(ds)
-        self.assertFalse(ds.external)
+        assert ds
+        assert not ds.external
 
     def test_cuda_driver_legacy_default_stream(self):
         # Test properties of the legacy default stream
         ds = self.context.get_legacy_default_stream()
-        self.assertIn("Legacy default CUDA stream", repr(ds))
-        self.assertEqual(1, int(ds))
-        self.assertTrue(ds)
-        self.assertFalse(ds.external)
+        assert "Legacy default CUDA stream" in repr(ds)
+        assert 1 == int(ds)
+        assert ds
+        assert not ds.external
 
     def test_cuda_driver_per_thread_default_stream(self):
         # Test properties of the per-thread default stream
         ds = self.context.get_per_thread_default_stream()
-        self.assertIn("Per-thread default CUDA stream", repr(ds))
-        self.assertEqual(2, int(ds))
-        self.assertTrue(ds)
-        self.assertFalse(ds.external)
+        assert "Per-thread default CUDA stream" in repr(ds)
+        assert 2 == int(ds)
+        assert ds
+        assert not ds.external
 
     def test_cuda_driver_stream(self):
         # Test properties of non-default streams
         s = self.context.create_stream()
-        self.assertIn("CUDA stream", repr(s))
-        self.assertNotIn("Default", repr(s))
-        self.assertNotIn("External", repr(s))
-        self.assertNotEqual(0, int(s))
-        self.assertTrue(s)
-        self.assertFalse(s.external)
+        assert "CUDA stream" in repr(s)
+        assert "Default" not in repr(s)
+        assert "External" not in repr(s)
+        assert 0 != int(s)
+        assert s
+        assert not s.external
 
     def test_cuda_driver_external_stream(self):
         # Test properties of a stream created from an external stream object.
@@ -267,12 +288,12 @@ class TestCudaDriver(CUDATestCase):
         ptr = int(handle)
         s = self.context.create_external_stream(ptr)
 
-        self.assertIn("External CUDA stream", repr(s))
+        assert "External CUDA stream" in repr(s)
         # Ensure neither "Default" nor "default"
-        self.assertNotIn("efault", repr(s))
-        self.assertEqual(ptr, int(s))
-        self.assertTrue(s)
-        self.assertTrue(s.external)
+        assert "efault" not in repr(s)
+        assert ptr == int(s)
+        assert s
+        assert s.external
 
     def test_cuda_driver_occupancy(self):
         module = self.context.create_module_ptx(self.ptx)
@@ -281,37 +302,26 @@ class TestCudaDriver(CUDATestCase):
         value = self.context.get_active_blocks_per_multiprocessor(
             function, 128, 128
         )
-        self.assertTrue(value > 0)
+        assert value > 0
 
-    def test_cuda_cache_config(self):
-        from numba import types
-        import numpy as np
-
-        sig = (types.float32[::1], types.float32[::1])
-
-        @cuda.jit(sig)
-        def add_one(r, x):
-            i = cuda.grid(1)
-            if i < len(r):
-                r[i] = x[i] + 1
-
-        kernel = add_one.overloads[sig]
-        cufunc = kernel._codelibrary.get_cufunc()
-
-        configs_to_test = [
+    @pytest.mark.parametrize(
+        "name,kwargs",
+        [
             ("prefer_shared", dict(prefer_shared=True)),
             ("prefer_cache", dict(prefer_cache=True)),
             ("prefer_equal", dict(prefer_equal=True)),
             ("default", dict()),
-        ]
+        ],
+    )
+    def test_cuda_cache_config_setup(self, cufunc_setup, name, kwargs):
+        cufunc, _ = cufunc_setup
+        try:
+            cufunc.cache_config(**kwargs)
+        except Exception as e:
+            pytest.fail(f"cache_config({name}) failed: {e}")
 
-        for name, kwargs in configs_to_test:
-            with self.subTest(config=name):
-                try:
-                    cufunc.cache_config(**kwargs)
-                except Exception as e:
-                    self.fail(f"cache_config({name}) failed: {e}")
-
+    def test_cuda_cache_config_usage(self, cufunc_setup):
+        cufunc, add_one = cufunc_setup
         x = np.array([1.0, 2.0, 3.0, 4.0, 5.0], dtype=np.float32)
         r = np.zeros_like(x)
 
@@ -330,39 +340,26 @@ class TestCudaDriver(CUDATestCase):
             err_msg="Kernel produced incorrect results after cache_config",
         )
 
-    def test_cuda_set_shared_memory_carveout(self):
-        from numba import types
-        import numpy as np
+    @pytest.mark.parametrize("value", [-1, 0, 50, 100])
+    def test_cuda_set_shared_memory_carveout__valid_values(
+        self, cufunc_setup, value
+    ):
+        cufunc, _ = cufunc_setup
+        try:
+            cufunc.set_shared_memory_carveout(value)
+        except Exception as e:
+            pytest.fail(f"set_shared_memory_carveout({value}) failed: {e}")
 
-        sig = (types.float32[::1], types.float32[::1])
+    @pytest.mark.parametrize("value", [-2, 101, 150])
+    def test_cuda_set_shared_memory_carveout__invalid_values(
+        self, cufunc_setup, value
+    ):
+        cufunc, _ = cufunc_setup
+        with pytest.raises(ValueError):
+            cufunc.set_shared_memory_carveout(value)
 
-        @cuda.jit(sig)
-        def add_one(r, x):
-            i = cuda.grid(1)
-            if i < len(r):
-                r[i] = x[i] + 1
-
-        kernel = add_one.overloads[sig]
-        cufunc = kernel._codelibrary.get_cufunc()
-
-        # valid carveout values
-        carveout_values = [-1, 0, 50, 100]
-        for value in carveout_values:
-            with self.subTest(carveout=value):
-                try:
-                    cufunc.set_shared_memory_carveout(value)
-                except Exception as e:
-                    self.fail(
-                        f"set_shared_memory_carveout({value}) failed: {e}"
-                    )
-
-        # invalid carveout values
-        invalid_values = [-2, 101, 150]
-        for value in invalid_values:
-            with self.subTest(invalid_carveout=value):
-                with self.assertRaises(ValueError):
-                    cufunc.set_shared_memory_carveout(value)
-
+    def test_cuda_set_shared_memory_carveout_usage(self, cufunc_setup):
+        cufunc, add_one = cufunc_setup
         # test the kernel
         x = np.array([1.0, 2.0, 3.0, 4.0, 5.0], dtype=np.float32)
         r = np.zeros_like(x)
@@ -383,7 +380,7 @@ class TestCudaDriver(CUDATestCase):
         )
 
 
-class TestDevice(CUDATestCase):
+class TestDevice:
     def test_device_get_uuid(self):
         # A device UUID looks like:
         #
@@ -403,11 +400,11 @@ class TestDevice(CUDATestCase):
         uuid_format = f"^GPU-{h8}-{h4}-{h4}-{h4}-{h12}$"
 
         dev = devices.get_context().device
-        self.assertRegex(dev.uuid, uuid_format)
+        assert re.search(uuid_format, dev.uuid)
 
 
 @skip_on_cudasim("CUDA asm unsupported in the simulator")
-class TestAcceleratedArchitecture(CUDATestCase):
+class TestAcceleratedArchitecture:
     @skip_unless_cc_90
     def test_device_arch_specific(self):
         set_desc = cuda.CUSource("""
@@ -449,20 +446,16 @@ class TestAcceleratedArchitecture(CUDATestCase):
     def test_get_arch_option_force_cc(self):
         with override_config("FORCE_CUDA_CC", (8, 0)):
             arch = nvrtc.get_arch_option(9, 0, "a")
-            self.assertEqual("compute_80", arch)
+            assert "compute_80" == arch
 
     def test_get_arch_option_force_cc_arch_specific(self):
         with override_config("FORCE_CUDA_CC", (9, 0, "a")):
             arch = nvrtc.get_arch_option(9, 0)
-            self.assertEqual("compute_90a", arch)
+            assert "compute_90a" == arch
 
     def test_get_arch_option_illegal_arch_specific(self):
         # Using a fictitious very high compute capability (major 99) for this
         # test to ensure future toolkits are unlikely to provide an exact match
         msg = "Can't use arch-specific compute_990a with"
-        with self.assertRaisesRegex(ValueError, msg):
+        with pytest.raises(ValueError, match=msg):
             nvrtc.get_arch_option(99, 0, "a")
-
-
-if __name__ == "__main__":
-    unittest.main()
