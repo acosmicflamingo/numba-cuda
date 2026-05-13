@@ -5,13 +5,12 @@ import pytest
 
 from llvmlite import ir
 from numba.cuda.cudadrv import nvrtc, nvvm, runtime
-from numba.cuda.testing import unittest
 from numba.cuda.cudadrv.nvvm import LibDevice, NVVM, nvvmError
 from numba.cuda.testing import skip_on_cudasim
 
 
 @skip_on_cudasim("NVVM Driver unsupported in the simulator")
-class TestNvvmDriver(unittest.TestCase):
+class TestNvvmDriver:
     def get_nvvmir(self):
         versions = NVVM().get_ir_version()
         data_layout = NVVM().data_layout
@@ -20,8 +19,8 @@ class TestNvvmDriver(unittest.TestCase):
     def test_nvvm_compile_simple(self):
         nvvmir = self.get_nvvmir()
         ptx = nvvm.compile_ir(nvvmir).decode("utf8")
-        self.assertTrue("simple" in ptx)
-        self.assertTrue("ave" in ptx)
+        assert "simple" in ptx
+        assert "ave" in ptx
 
     def test_nvvm_compile_nullary_option(self):
         # Tests compilation with an option that doesn't take an argument
@@ -34,13 +33,13 @@ class TestNvvmDriver(unittest.TestCase):
 
         # Verify we correctly passed the option by checking if we got LTOIR
         # from NVVM (by looking for the expected magic number for LTOIR)
-        self.assertEqual(ltoir[:4], b"\xed\x43\x4e\x7f")
+        assert ltoir[:4] == b"\xed\x43\x4e\x7f"
 
     def test_nvvm_bad_option(self):
         # Ensure that unsupported / non-existent options raise from the binding
         if nvvmError is None:
-            self.skipTest("NVVM binding not available")
-        with self.assertRaises(nvvmError):
+            pytest.skip(reason="NVVM binding not available")
+        with pytest.raises(nvvmError):
             nvvm.compile_ir("", made_up_option=2)
 
     def test_nvvm_from_llvm(self):
@@ -55,8 +54,8 @@ class TestNvvmDriver(unittest.TestCase):
 
         m.data_layout = NVVM().data_layout
         ptx = nvvm.compile_ir(str(m)).decode("utf8")
-        self.assertTrue("mycudakernel" in ptx)
-        self.assertTrue(".address_size 64" in ptx)
+        assert "mycudakernel" in ptx
+        assert ".address_size 64" in ptx
 
     def test_used_list(self):
         # Construct a module
@@ -77,37 +76,37 @@ class TestNvvmDriver(unittest.TestCase):
             line for line in str(m).splitlines() if "llvm.used" in line
         ]
         msg = 'Expected exactly one @"llvm.used" array'
-        self.assertEqual(len(used_lines), 1, msg)
+        assert len(used_lines) == 1, msg
 
         used_line = used_lines[0]
         # Kernel should be referenced in the used list
-        self.assertIn("mycudakernel", used_line)
+        assert "mycudakernel" in used_line
         # Check linkage of the used list
-        self.assertIn("appending global", used_line)
+        assert "appending global" in used_line
         # Ensure used list is in the metadata section
-        self.assertIn('section "llvm.metadata"', used_line)
+        assert 'section "llvm.metadata"' in used_line
 
     def test_nvvm_ir_verify_fail(self):
         if nvvmError is None:
-            self.skipTest("NVVM binding not available")
+            pytest.skip(reason="NVVM binding not available")
         if runtime.get_version() >= (12, 5):
-            self.skipTest("Bad triple doesn't fail verify on CUDA >= 12.5")
+            pytest.skip(reason="Bad triple doesn't fail verify on CUDA >= 12.5")
         m = ir.Module("test_bad_ir")
         m.triple = "unknown-unknown-unknown"
         m.data_layout = NVVM().data_layout
         nvvm.add_ir_version(m)
-        with self.assertRaises(nvvmError):
+        with pytest.raises(nvvmError):
             nvvm.compile_ir(str(m))
 
     def _test_nvvm_support(self, arch):
-        compute_xx = "compute_{0}{1}".format(*arch)
+        compute_xx = "compute_%d%d" % arch
         nvvmir = self.get_nvvmir()
         ptx = nvvm.compile_ir(
             nvvmir, arch=compute_xx, ftz=1, prec_sqrt=0, prec_div=0
         ).decode("utf8")
-        self.assertIn(".target sm_{0}{1}".format(*arch), ptx)
-        self.assertIn("simple", ptx)
-        self.assertIn("ave", ptx)
+        assert ".target sm_%d%d" % arch in ptx
+        assert "simple" in ptx
+        assert "ave" in ptx
 
     def test_nvvm_support(self):
         """Test supported CC by NVVM"""
@@ -135,11 +134,11 @@ class TestNvvmDriver(unittest.TestCase):
 
 
 @skip_on_cudasim("NVVM Driver unsupported in the simulator")
-class TestLibDevice(unittest.TestCase):
+class TestLibDevice:
     def test_libdevice_load(self):
         # Test that constructing LibDevice gives a bitcode file
         libdevice = LibDevice()
-        self.assertEqual(libdevice.bc[:4], b"BC\xc0\xde")
+        assert libdevice.bc[:4] == b"BC\xc0\xde"
 
 
 nvvmir_generic = """\
@@ -181,7 +180,3 @@ declare i32 @llvm.nvvm.read.ptx.sreg.tid.x() nounwind readnone
 
 @"llvm.used" = appending global [1 x i8*] [i8* bitcast (void (i32*)* @simple to i8*)], section "llvm.metadata"
 """  # noqa: E501
-
-
-if __name__ == "__main__":
-    unittest.main()

@@ -4,9 +4,12 @@
 import asyncio
 import functools
 import threading
+
 import numpy as np
+import pytest
+
 from numba import cuda
-from numba.cuda.testing import unittest, CUDATestCase, skip_on_cudasim
+from numba.cuda.testing import skip_on_cudasim
 
 
 def with_asyncio_loop(f):
@@ -22,9 +25,9 @@ def with_asyncio_loop(f):
     return runner
 
 
-@unittest.skip("Disabled temporarily due to Issue #317")
+@pytest.mark.skip(reason="Disabled temporarily due to Issue #317")
 @skip_on_cudasim("CUDA Driver API unsupported in the simulator")
-class TestCudaStream(CUDATestCase):
+class TestCudaStream:
     def test_add_callback(self):
         def callback(stream, status, event):
             event.set()
@@ -32,18 +35,18 @@ class TestCudaStream(CUDATestCase):
         stream = cuda.stream()
         callback_event = threading.Event()
         stream.add_callback(callback, callback_event)
-        self.assertTrue(callback_event.wait(1.0))
+        assert callback_event.wait(1.0)
 
     def test_add_callback_with_default_arg(self):
         callback_event = threading.Event()
 
         def callback(stream, status, arg):
-            self.assertIsNone(arg)
+            assert arg is None
             callback_event.set()
 
         stream = cuda.stream()
         stream.add_callback(callback)
-        self.assertTrue(callback_event.wait(1.0))
+        assert callback_event.wait(1.0)
 
     @with_asyncio_loop
     async def test_async_done(self):
@@ -59,13 +62,13 @@ class TestCudaStream(CUDATestCase):
             d_ary = cuda.to_device(h_src, stream=stream)
             d_ary.copy_to_host(h_dst, stream=stream)
             done_result = await stream.async_done()
-            self.assertEqual(done_result, stream)
+            assert done_result == stream
             return h_dst.mean()
 
         values_in = [1, 2, 3, 4]
         tasks = [asyncio.create_task(async_cuda_fn(v)) for v in values_in]
         values_out = await asyncio.gather(*tasks)
-        self.assertTrue(np.allclose(values_in, values_out))
+        assert np.allclose(values_in, values_out)
 
     @with_asyncio_loop
     async def test_multiple_async_done(self):
@@ -73,7 +76,7 @@ class TestCudaStream(CUDATestCase):
         done_aws = [stream.async_done() for _ in range(4)]
         done = await asyncio.gather(*done_aws)
         for d in done:
-            self.assertEqual(d, stream)
+            assert d == stream
 
     @with_asyncio_loop
     async def test_multiple_async_done_multiple_streams(self):
@@ -82,7 +85,7 @@ class TestCudaStream(CUDATestCase):
         done = await asyncio.gather(*done_aws)
 
         # Ensure we got the four original streams in done
-        self.assertSetEqual(set(done), set(streams))
+        assert set(done) == set(streams)
 
     @with_asyncio_loop
     async def test_cancelled_future(self):
@@ -90,9 +93,5 @@ class TestCudaStream(CUDATestCase):
         done1, done2 = stream.async_done(), stream.async_done()
         done1.cancel()
         await done2
-        self.assertTrue(done1.cancelled())
-        self.assertTrue(done2.done())
-
-
-if __name__ == "__main__":
-    unittest.main()
+        assert done1.cancelled()
+        assert done2.done()

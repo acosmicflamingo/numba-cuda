@@ -2,19 +2,20 @@
 # SPDX-License-Identifier: BSD-2-Clause
 
 import numpy as np
+import pytest
+
 from numba.cuda.cudadrv.driver import device_memset, driver
 from numba import cuda
-from numba.cuda.testing import unittest, CUDATestCase
 from numba.cuda.testing import skip_on_cudasim, skip_on_arm
-from numba.cuda.tests.support import linux_only
+from numba.cuda.tests.support import linux_only, cuda_test_setup
 
 
 @skip_on_cudasim("CUDA Driver API unsupported in the simulator")
 @linux_only
 @skip_on_arm("Managed Alloc support is experimental/untested on ARM")
-class TestManagedAlloc(CUDATestCase):
-    def tearDown(self):
-        super().tearDown()
+class TestManagedAlloc:
+    @pytest.fixture(autouse=True)
+    def configure(self, cuda_test_setup):
         cuda.current_context().reset()
 
     def get_total_gpu_memory(self):
@@ -32,7 +33,7 @@ class TestManagedAlloc(CUDATestCase):
         ctx = cuda.current_context()
         cc_major = ctx.device.compute_capability[0]
         if cc_major < min_required:
-            self.skipTest(reason)
+            pytest.skip(reason=reason)
 
     # CUDA Unified Memory comes in two flavors. For GPUs in the Kepler and
     # Maxwell generations, managed memory allocations work as opaque,
@@ -59,7 +60,7 @@ class TestManagedAlloc(CUDATestCase):
     #
     # However, it is left in here for manual testing as required.
 
-    @unittest.skip
+    @pytest.mark.skip
     def test_managed_alloc_driver_oversubscribe(self):
         msg = "Oversubscription of managed memory unsupported prior to CC 6.0"
         self.skip_if_cc_major_lt(6, msg)
@@ -94,14 +95,14 @@ class TestManagedAlloc(CUDATestCase):
         # test effectively drives both the CPU and the GPU on
         # managed memory.
 
-        self.assertTrue(np.all(ary == magic))
+        assert np.all(ary == magic)
 
     def _test_managed_array(self, attach_global=True):
         # Check the managed_array interface on both host and device.
 
         ary = cuda.managed_array(100, dtype=np.double)
         ary.fill(123.456)
-        self.assertTrue(all(ary == 123.456))
+        assert all(ary == 123.456)
 
         @cuda.jit("void(double[:])")
         def kernel(x):
@@ -112,7 +113,7 @@ class TestManagedAlloc(CUDATestCase):
         kernel[10, 10](ary)
         cuda.current_context().synchronize()
 
-        self.assertTrue(all(ary == 1.0))
+        assert all(ary == 1.0)
 
     def test_managed_array_attach_global(self):
         self._test_managed_array()
@@ -122,7 +123,3 @@ class TestManagedAlloc(CUDATestCase):
         msg = "Host attached managed memory is not accessible prior to CC 6.0"
         self.skip_if_cc_major_lt(6, msg)
         self._test_managed_array(attach_global=False)
-
-
-if __name__ == "__main__":
-    unittest.main()

@@ -4,11 +4,10 @@
 import threading
 from numba import cuda
 from numba.cuda.cudadrv.driver import driver
-from numba.cuda.testing import unittest, CUDATestCase
 from queue import Queue
 
 
-class TestResetDevice(CUDATestCase):
+class TestResetDevice:
     def test_reset_device(self):
         def newthread(exception_queue):
             try:
@@ -31,8 +30,4 @@ class TestResetDevice(CUDATestCase):
         exceptions = []
         while not exception_queue.empty():
             exceptions.append(exception_queue.get())
-        self.assertEqual(exceptions, [])
-
-
-if __name__ == "__main__":
-    unittest.main()
+        assert exceptions == []

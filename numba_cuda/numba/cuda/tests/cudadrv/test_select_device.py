@@ -9,7 +9,6 @@ from queue import Queue
 
 import numpy as np
 from numba import cuda
-from numba.cuda.testing import unittest, CUDATestCase
 
 
 def newthread(exception_queue):
@@ -26,7 +25,7 @@ def newthread(exception_queue):
         exception_queue.put(e)
 
 
-class TestSelectDevice(CUDATestCase):
+class TestSelectDevice:
     def test_select_device(self):
         exception_queue = Queue()
         for i in range(10):
@@ -37,8 +36,4 @@ class TestSelectDevice(CUDATestCase):
         exceptions = []
         while not exception_queue.empty():
             exceptions.append(exception_queue.get())
-        self.assertEqual(exceptions, [])
-
-
-if __name__ == "__main__":
-    unittest.main()
+        assert exceptions == []

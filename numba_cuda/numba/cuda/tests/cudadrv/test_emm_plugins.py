@@ -2,13 +2,15 @@
 # SPDX-License-Identifier: BSD-2-Clause
 
 import ctypes
-import numpy as np
 import weakref
+
+import numpy as np
+import pytest
 
 from numba import cuda
 from numba.cuda.core import config
-from numba.cuda.testing import unittest, CUDATestCase, skip_on_cudasim
-from numba.cuda.tests.support import linux_only
+from numba.cuda.testing import skip_on_cudasim
+from numba.cuda.tests.support import linux_only, cuda_test_setup
 
 if not config.ENABLE_CUDASIM:
 
@@ -103,22 +105,22 @@ if not config.ENABLE_CUDASIM:
 
 
 @skip_on_cudasim("EMM Plugins not supported on CUDA simulator")
-class TestDeviceOnlyEMMPlugin(CUDATestCase):
+class TestDeviceOnlyEMMPlugin:
     """
     Tests that the API of an EMM Plugin that implements device allocations
     only is used correctly by Numba.
     """
 
-    def setUp(self):
-        super().setUp()
+    @pytest.fixture(autouse=True)
+    def configure(self, cuda_test_setup):
         # Always start afresh with a new context and memory manager
         ctx = cuda.current_context()
         ctx.reset()
         self._initial_memory_manager = ctx.memory_manager
         ctx.memory_manager = DeviceOnlyEMMPlugin(context=ctx)
 
-    def tearDown(self):
-        super().tearDown()
+        yield
+
         ctx = cuda.current_context()
         ctx.reset()
         ctx.memory_manager = self._initial_memory_manager
@@ -130,45 +132,45 @@ class TestDeviceOnlyEMMPlugin(CUDATestCase):
         # size.
         arr_1 = np.arange(10)
         d_arr_1 = cuda.device_array_like(arr_1)
-        self.assertTrue(mgr.memalloc_called)
+        assert mgr.memalloc_called
 
-        self.assertEqual(mgr.count, 1)
-        self.assertEqual(mgr.allocations[1], arr_1.nbytes)
+        assert mgr.count == 1
+        assert mgr.allocations[1] == arr_1.nbytes
 
         # Allocate again, with a different size, and check that it is also
         # correct.
         arr_2 = np.arange(5)
         d_arr_2 = cuda.device_array_like(arr_2)
-        self.assertEqual(mgr.count, 2)
-        self.assertEqual(mgr.allocations[2], arr_2.nbytes)
+        assert mgr.count == 2
+        assert mgr.allocations[2] == arr_2.nbytes
 
         # Remove the first array, and check that our finalizer was called for
         # the first array only.
         del d_arr_1
-        self.assertNotIn(1, mgr.allocations)
-        self.assertIn(2, mgr.allocations)
+        assert 1 not in mgr.allocations
+        assert 2 in mgr.allocations
 
         # Remove the second array and check that its finalizer was also
         # called.
         del d_arr_2
-        self.assertNotIn(2, mgr.allocations)
+        assert 2 not in mgr.allocations
 
     def test_initialized_in_context(self):
         # If we have a CUDA context, it should already have initialized its
         # memory manager.
-        self.assertTrue(cuda.current_context().memory_manager.initialized)
+        assert cuda.current_context().memory_manager.initialized
 
     def test_reset(self):
         ctx = cuda.current_context()
         ctx.reset()
-        self.assertTrue(ctx.memory_manager.reset_called)
+        assert ctx.memory_manager.reset_called
 
     def test_get_memory_info(self):
         ctx = cuda.current_context()
         meminfo = ctx.get_memory_info()
-        self.assertTrue(ctx.memory_manager.get_memory_info_called)
-        self.assertEqual(meminfo.free, 32)
-        self.assertEqual(meminfo.total, 64)
+        assert ctx.memory_manager.get_memory_info_called
+        assert meminfo.free == 32
+        assert meminfo.total == 64
 
     @linux_only
     def test_get_ipc_handle(self):
@@ -179,22 +181,18 @@ class TestDeviceOnlyEMMPlugin(CUDATestCase):
         d_arr = cuda.device_array_like(arr)
         ipch = d_arr.get_ipc_handle()
         ctx = cuda.current_context()
-        self.assertTrue(ctx.memory_manager.get_ipc_handle_called)
-        self.assertIn("Dummy IPC handle for alloc 1", ipch._ipc_handle)
+        assert ctx.memory_manager.get_ipc_handle_called
+        assert "Dummy IPC handle for alloc 1" in ipch._ipc_handle
 
 
 @skip_on_cudasim("EMM Plugins not supported on CUDA simulator")
-class TestBadEMMPluginVersion(CUDATestCase):
+class TestBadEMMPluginVersion:
     """
     Ensure that Numba rejects EMM Plugins with incompatible version
     numbers.
     """
 
     def test_bad_plugin_version(self):
-        with self.assertRaises(RuntimeError) as raises:
+        with pytest.raises(RuntimeError) as raises:
             cuda.set_memory_manager(BadVersionEMMPlugin)
-        self.assertIn("version 1 required", str(raises.exception))
-
-
-if __name__ == "__main__":
-    unittest.main()
+        assert "version 1 required" in str(raises.value)

@@ -1,16 +1,17 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: BSD-2-Clause
 
-import numpy as np
 import os
+
+import numpy as np
 import pytest
-from numba.cuda.testing import unittest
+
 from numba.cuda.testing import (
     skip_on_cudasim,
     skip_if_cuda_includes_missing,
     skip_if_nvjitlink_missing,
 )
-from numba.cuda.testing import CUDATestCase, test_data_dir
+from numba.cuda.testing import test_data_dir
 from numba.cuda.cudadrv.driver import _Linker, LinkerError
 from numba.cuda import require_context
 from numba import cuda
@@ -128,7 +129,7 @@ if TEST_BIN_DIR:
 
 
 @skip_on_cudasim("Linking unsupported in the simulator")
-class TestLinker(CUDATestCase):
+class TestLinker:
     @require_context
     def test_linker_basic(self):
         """Simply go through the constructor and destructor"""
@@ -156,7 +157,7 @@ class TestLinker(CUDATestCase):
 
         foo[1, 1](A, B)
 
-        self.assertTrue(A[0] == 123 + 2 * 321)
+        assert A[0] == 123 + 2 * 321
 
     def test_linking_lazy_compile(self):
         self._test_linking(eager=False)
@@ -199,14 +200,12 @@ class TestLinker(CUDATestCase):
         nvrtc_log_warnings = [
             wi for wi in w if "NVRTC log messages" in str(wi.message)
         ]
-        self.assertEqual(
-            len(nvrtc_log_warnings), 1, "Expected warnings from NVRTC"
-        )
+        assert len(nvrtc_log_warnings) == 1, "Expected warnings from NVRTC"
         # Check the warning refers to the log messages
-        self.assertIn("NVRTC log messages", str(nvrtc_log_warnings[0].message))
+        assert "NVRTC log messages" in str(nvrtc_log_warnings[0].message)
         # Check the message pertaining to the unused variable is provided
-        self.assertIn(
-            "declared but never referenced", str(nvrtc_log_warnings[0].message)
+        assert "declared but never referenced" in str(
+            nvrtc_log_warnings[0].message
         )
 
     def test_linking_cu_error(self):
@@ -217,24 +216,24 @@ class TestLinker(CUDATestCase):
         from cuda.core._utils.cuda_utils import NVRTCError
 
         errty = NVRTCError
-        with self.assertRaises(errty) as e:
+        with pytest.raises(errty) as e:
 
             @cuda.jit("void(int32)", link=[link])
             def kernel(x):
                 bar(x)
 
-        msg = e.exception.args[0]
+        msg = e.value.args[0]
         # Check the error message refers to the NVRTC compile
         nvrtc_err_str = "NVRTC_ERROR_COMPILATION"
-        self.assertIn(nvrtc_err_str, msg)
+        assert nvrtc_err_str in msg
         # Check the expected error in the CUDA source is reported
-        self.assertIn('identifier "SYNTAX" is undefined', msg)
+        assert 'identifier "SYNTAX" is undefined' in msg
         # Check the filename is reported correctly
-        self.assertIn('in the compilation of "error.cu"', msg)
+        assert 'in the compilation of "error.cu"' in msg
 
     def test_linking_unknown_filetype_error(self):
         expected_err = "Don't know how to link file with extension .cuh"
-        with self.assertRaisesRegex(RuntimeError, expected_err):
+        with pytest.raises(RuntimeError, match=expected_err):
 
             @cuda.jit("void()", link=["header.cuh"])
             def kernel():
@@ -242,7 +241,7 @@ class TestLinker(CUDATestCase):
 
     def test_linking_file_with_no_extension_error(self):
         expected_err = "Don't know how to link file with no extension"
-        with self.assertRaisesRegex(RuntimeError, expected_err):
+        with pytest.raises(RuntimeError, match=expected_err):
 
             @cuda.jit("void()", link=["data"])
             def kernel():
@@ -259,13 +258,13 @@ class TestLinker(CUDATestCase):
             pass
 
     def test_try_to_link_nonexistent(self):
-        with self.assertRaises(LinkerError) as e:
+        with pytest.raises(LinkerError) as e:
 
             @cuda.jit("void(int32[::1])", link=["nonexistent.a"])
             def f(x):
                 x[0] = 0
 
-        self.assertIn("nonexistent.a not found", e.exception.args)
+        assert "nonexistent.a not found" in e.value.args
 
     def test_set_registers_no_max(self):
         """Ensure that the jitted kernel used in the test_set_registers_* tests
@@ -274,40 +273,40 @@ class TestLinker(CUDATestCase):
         something greater than the maximum."""
         compiled = cuda.jit(func_with_lots_of_registers)
         compiled = compiled.specialize(np.empty(32), *range(6))
-        self.assertGreater(compiled.get_regs_per_thread(), 57)
+        assert compiled.get_regs_per_thread() > 57
 
     def test_set_registers_57(self):
         compiled = cuda.jit(max_registers=57)(func_with_lots_of_registers)
         compiled = compiled.specialize(np.empty(32), *range(6))
-        self.assertLessEqual(compiled.get_regs_per_thread(), 57)
+        assert compiled.get_regs_per_thread() <= 57
 
     def test_set_registers_38(self):
         compiled = cuda.jit(max_registers=38)(func_with_lots_of_registers)
         compiled = compiled.specialize(np.empty(32), *range(6))
-        self.assertLessEqual(compiled.get_regs_per_thread(), 38)
+        assert compiled.get_regs_per_thread() <= 38
 
     def test_set_registers_eager(self):
         sig = void(float64[::1], int64, int64, int64, int64, int64, int64)
         compiled = cuda.jit(sig, max_registers=38)(func_with_lots_of_registers)
-        self.assertLessEqual(compiled.get_regs_per_thread(), 38)
+        assert compiled.get_regs_per_thread() <= 38
 
     def test_get_const_mem_size(self):
         sig = void(float64[::1])
         compiled = cuda.jit(sig)(simple_const_mem)
         const_mem_size = compiled.get_const_mem_size()
-        self.assertGreaterEqual(const_mem_size, CONST1D.nbytes)
+        assert const_mem_size >= CONST1D.nbytes
 
     def test_get_no_shared_memory(self):
         compiled = cuda.jit(func_with_lots_of_registers)
         compiled = compiled.specialize(np.empty(32), *range(6))
         shared_mem_size = compiled.get_shared_mem_per_block()
-        self.assertEqual(shared_mem_size, 0)
+        assert shared_mem_size == 0
 
     def test_get_shared_mem_per_block(self):
         sig = void(int32[::1], typeof(np.int32))
         compiled = cuda.jit(sig)(simple_smem)
         shared_mem_size = compiled.get_shared_mem_per_block()
-        self.assertEqual(shared_mem_size, 400)
+        assert shared_mem_size == 400
 
     def test_get_shared_mem_per_specialized(self):
         compiled = cuda.jit(simple_smem)
@@ -315,19 +314,19 @@ class TestLinker(CUDATestCase):
             np.zeros(100, dtype=np.int32), np.float64
         )
         shared_mem_size = compiled_specialized.get_shared_mem_per_block()
-        self.assertEqual(shared_mem_size, 800)
+        assert shared_mem_size == 800
 
     def test_get_max_threads_per_block(self):
         compiled = cuda.jit("void(float32[:,::1])")(coop_smem2d)
         max_threads = compiled.get_max_threads_per_block()
-        self.assertGreater(max_threads, 0)
+        assert max_threads > 0
 
     def test_max_threads_exceeded(self):
         compiled = cuda.jit("void(int32[::1])")(simple_maxthreads)
         max_threads = compiled.get_max_threads_per_block()
         nelem = max_threads + 1
         ary = np.empty(nelem, dtype=np.int32)
-        with self.assertRaisesRegex(CUDAError, "CUDA_ERROR_INVALID_VALUE"):
+        with pytest.raises(CUDAError, match="CUDA_ERROR_INVALID_VALUE"):
             compiled[1, nelem](ary)
 
     def test_get_local_mem_per_thread(self):
@@ -335,7 +334,7 @@ class TestLinker(CUDATestCase):
         compiled = cuda.jit(sig)(simple_lmem)
         local_mem_size = compiled.get_local_mem_per_thread()
         calc_size = np.dtype(np.int32).itemsize * LMEM_SIZE
-        self.assertGreaterEqual(local_mem_size, calc_size)
+        assert local_mem_size >= calc_size
 
     def test_get_local_mem_per_specialized(self):
         compiled = cuda.jit(simple_lmem)
@@ -346,9 +345,11 @@ class TestLinker(CUDATestCase):
         )
         local_mem_size = compiled_specialized.get_local_mem_per_thread()
         calc_size = np.dtype(np.float64).itemsize * LMEM_SIZE
-        self.assertGreaterEqual(local_mem_size, calc_size)
+        assert local_mem_size >= calc_size
 
-    @unittest.skipUnless(TEST_BIN_DIR, "NUMBA_CUDA_TEST_BIN_DIR not set")
+    @pytest.mark.skipif(
+        not TEST_BIN_DIR, reason="NUMBA_CUDA_TEST_BIN_DIR not set"
+    )
     def test_debug_kernel_with_lto(self):
         cuda.jit("void(int32[::1])", debug=True, opt=False)(debuggable_kernel)
 
@@ -363,7 +364,3 @@ __device__ int foo(int x) {
         linker.add_cu(code, "foo")
         ptx = linker.get_linked_ptx().decode()
         assert "target sm_75" in ptx
-
-
-if __name__ == "__main__":
-    unittest.main()

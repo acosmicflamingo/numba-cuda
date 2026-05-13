@@ -1,14 +1,14 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: BSD-2-Clause
 
-import unittest
-from numba.cuda.testing import CUDATestCase
+import pytest
+
 from numba import cuda
 from numba.cuda.testing import skip_on_cudasim
 
 
 @skip_on_cudasim("CUDA Profiler unsupported in the simulator")
-class TestProfiler(CUDATestCase):
+class TestProfiler:
     def test_profiling(self):
         with cuda.profiling():
             a = cuda.device_array(10)
@@ -17,7 +17,3 @@ class TestProfiler(CUDATestCase):
         with cuda.profiling():
             a = cuda.device_array(100)
             del a
-
-
-if __name__ == "__main__":
-    unittest.main()

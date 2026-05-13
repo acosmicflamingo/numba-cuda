@@ -4,7 +4,8 @@
 import concurrent.futures
 import multiprocessing
 import os
-from numba.cuda.testing import unittest
+
+import pytest
 
 
 def set_visible_devices_and_check():
@@ -15,7 +16,7 @@ def set_visible_devices_and_check():
     return len(cuda.gpus.lst)
 
 
-class TestVisibleDevices(unittest.TestCase):
+class TestVisibleDevices:
     def test_visible_devices_set_after_import(self):
         # See Issue #6149. This test checks that we can set
         # CUDA_VISIBLE_DEVICES after importing Numba and have the value
@@ -29,11 +30,11 @@ class TestVisibleDevices(unittest.TestCase):
         from numba import cuda
 
         if len(cuda.gpus.lst) in (0, 1):
-            self.skipTest("This test requires multiple GPUs")
+            pytest.skip(reason="This test requires multiple GPUs")
 
         if os.environ.get("CUDA_VISIBLE_DEVICES"):
             msg = "Cannot test when CUDA_VISIBLE_DEVICES already set"
-            self.skipTest(msg)
+            pytest.skip(reason=msg)
 
         with concurrent.futures.ProcessPoolExecutor(
             mp_context=multiprocessing.get_context("spawn")
@@ -42,7 +43,3 @@ class TestVisibleDevices(unittest.TestCase):
 
         visible_gpu_count = future.result()
         assert visible_gpu_count == 1
-
-
-if __name__ == "__main__":
-    unittest.main()

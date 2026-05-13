@@ -1,14 +1,15 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: BSD-2-Clause
 
-import numpy as np
+
 import platform
 
+import numpy as np
+
 from numba import cuda
-from numba.cuda.testing import unittest, CUDATestCase
 
 
-class TestPinned(CUDATestCase):
+class TestPinned:
     def _run_copies(self, A):
         A0 = np.copy(A)
 
@@ -18,7 +19,7 @@ class TestPinned(CUDATestCase):
         ptr.copy_to_host(A, stream=stream)
         stream.synchronize()
 
-        self.assertTrue(np.allclose(A, A0))
+        assert np.allclose(A, A0)
 
     def test_pinned(self):
         machine = platform.machine()
@@ -33,7 +34,3 @@ class TestPinned(CUDATestCase):
     def test_unpinned(self):
         A = np.arange(2 * 1024 * 1024)  # 16 MB
         self._run_copies(A)
-
-
-if __name__ == "__main__":
-    unittest.main()
