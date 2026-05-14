@@ -6,6 +6,8 @@ import collections
 import types as pytypes
 
 import numpy as np
+import pytest
+
 from numba.cuda.compiler import run_frontend
 from numba.cuda.flags import Flags
 from numba.cuda.core.compiler import StateDict
@@ -28,7 +30,6 @@ from numba.cuda.core.analysis import (
 from numba.cuda.core.untyped_passes import (
     ReconstructSSA,
 )
-import unittest
 from numba.cuda.core import config
 
 _GLOBAL = 123
@@ -37,7 +38,7 @@ enable_pyobj_flags = Flags()
 enable_pyobj_flags.enable_pyobject = True
 
 if config.ENABLE_CUDASIM:
-    raise unittest.SkipTest("Analysis passes not done in simulator")
+    pytest.skip(reason="Analysis passes not done in simulator")
 
 
 def compile_to_ir(func):
@@ -53,7 +54,7 @@ def compile_to_ir(func):
     return func_ir
 
 
-class TestBranchPruneBase(unittest.TestCase):
+class TestBranchPruneBase:
     """
     Tests branch pruning
     """
@@ -115,7 +116,7 @@ class TestBranchPruneBase(unittest.TestCase):
             func_ir.dump()
 
         before_branches = self.find_branches(before)
-        self.assertEqual(len(before_branches), len(prune))
+        assert len(before_branches) == len(prune)
 
         # what is expected to be pruned
         expect_removed = []
@@ -139,7 +140,7 @@ class TestBranchPruneBase(unittest.TestCase):
         # assert that the new labels are precisely the original less the
         # expected pruned labels
         try:
-            self.assertEqual(new_labels, original_labels - set(expect_removed))
+            assert new_labels == original_labels - set(expect_removed)
         except AssertionError as e:
             print("new_labels", sorted(new_labels))
             print("original_labels", sorted(original_labels))
@@ -162,7 +163,7 @@ class TestBranchPruneBase(unittest.TestCase):
         cres.py_func(*args)
         with override_config("DISABLE_PERFORMANCE_WARNINGS", 1):
             cres[1, 1](*dargs)
-        assertPreciseEqual(out[0], cout[0])
+        assert out[0] == pytest.approx(cout[0])
 
 
 class TestBranchPrune(TestBranchPruneBase):
@@ -527,15 +528,15 @@ class TestBranchPrune(TestBranchPruneBase):
 
             # check there is 1 branch
             before_branches = self.find_branches(func_ir)
-            self.assertEqual(len(before_branches), 1)
+            assert len(before_branches) == 1
 
             # check the condition in the branch is a binop
             pred_var = before_branches[0].cond
             pred_defn = ir_utils.get_definition(func_ir, pred_var)
-            self.assertEqual(pred_defn.op, "call")
+            assert pred_defn.op == "call"
             condition_var = pred_defn.args[0]
             condition_op = ir_utils.get_definition(func_ir, condition_var)
-            self.assertEqual(condition_op.op, "binop")
+            assert condition_op.op == "binop"
 
             # do the prune, this should kill the dead branch and rewrite the
             #'condition to a true/false const bit
@@ -551,8 +552,8 @@ class TestBranchPrune(TestBranchPruneBase):
 
             # after mutation, the condition should be a const value `bit_val`
             new_condition_defn = ir_utils.get_definition(func_ir, condition_var)
-            self.assertTrue(isinstance(new_condition_defn, ir.Const))
-            self.assertEqual(new_condition_defn.value, bit_val)
+            assert isinstance(new_condition_defn, ir.Const)
+            assert new_condition_defn.value == bit_val
 
         check(fn, (types.NoneType("none"),), 1)
         check(fn, (types.IntegerLiteral(10),), 0)
@@ -824,6 +825,7 @@ class TestBranchPrunePredicates(TestBranchPruneBase):
 
     _TRUTHY = (1, "String", True, 7.4, 3j)
     _FALSEY = (0, "", False, 0.0, 0j, None)
+    _TRUTHY_FALSEY_TUPLES = [(_TRUTHY, False), (_FALSEY, True)]
 
     def _literal_const_sample_generator(self, pyfunc, consts):
         """
@@ -867,65 +869,52 @@ class TestBranchPrunePredicates(TestBranchPruneBase):
         iconst = impl.__code__.co_consts
         nconst = new.__code__.co_consts
         if PYVERSION in ((3, 14),):
-            self.assertEqual(iconst, ("PLACEHOLDER1", 3.14159, "PLACEHOLDER2"))
-            self.assertEqual(nconst, (0, 3.14159, 20))
+            assert iconst == ("PLACEHOLDER1", 3.14159, "PLACEHOLDER2")
+            assert nconst == (0, 3.14159, 20)
         elif PYVERSION in ((3, 10), (3, 11), (3, 12), (3, 13)):
-            self.assertEqual(
-                iconst, (None, "PLACEHOLDER1", 3.14159, "PLACEHOLDER2", 4)
-            )
-            self.assertEqual(nconst, (None, 0, 3.14159, 20, 4))
+            assert iconst == (None, "PLACEHOLDER1", 3.14159, "PLACEHOLDER2", 4)
+            assert nconst == (None, 0, 3.14159, 20, 4)
         else:
             raise NotImplementedError(PYVERSION)
-        self.assertEqual(impl(None), 3.14159)
-        self.assertEqual(new(None), 24)
+        assert impl(None) == 3.14159
+        assert new(None) == 24
 
-    def test_single_if_const(self):
+    @pytest.mark.parametrize("c_inp,prune", _TRUTHY_FALSEY_TUPLES)
+    def test_single_if_const(self, c_inp, prune):
         def impl(x):
             _CONST1 = "PLACEHOLDER1"
             if _CONST1:
                 return 3.14159
 
-        for c_inp, prune in (self._TRUTHY, False), (self._FALSEY, True):
-            for const in c_inp:
-                if PYVERSION in ((3, 14),):
-                    # The order of the __code__.co_consts changes with 3.14
-                    func = self._literal_const_sample_generator(
-                        impl, {0: const}
-                    )
-                elif PYVERSION in ((3, 10), (3, 11), (3, 12), (3, 13)):
-                    func = self._literal_const_sample_generator(
-                        impl, {1: const}
-                    )
-                else:
-                    raise NotImplementedError(PYVERSION)
-                self.assert_prune(
-                    func, (types.NoneType("none"),), [prune], None
-                )
+        for const in c_inp:
+            if PYVERSION in ((3, 14),):
+                # The order of the __code__.co_consts changes with 3.14
+                func = self._literal_const_sample_generator(impl, {0: const})
+            elif PYVERSION in ((3, 10), (3, 11), (3, 12), (3, 13)):
+                func = self._literal_const_sample_generator(impl, {1: const})
+            else:
+                raise NotImplementedError(PYVERSION)
+            self.assert_prune(func, (types.NoneType("none"),), [prune], None)
 
-    def test_single_if_negate_const(self):
+    @pytest.mark.parametrize("c_inp,prune", _TRUTHY_FALSEY_TUPLES)
+    def test_single_if_negate_const(self, c_inp, prune):
         def impl(x):
             _CONST1 = "PLACEHOLDER1"
             if not _CONST1:
                 return 3.14159
 
-        for c_inp, prune in (self._TRUTHY, False), (self._FALSEY, True):
-            for const in c_inp:
-                if PYVERSION in ((3, 14),):
-                    # The order of the __code__.co_consts changes with 3.14
-                    func = self._literal_const_sample_generator(
-                        impl, {0: const}
-                    )
-                elif PYVERSION in ((3, 10), (3, 11), (3, 12), (3, 13)):
-                    func = self._literal_const_sample_generator(
-                        impl, {1: const}
-                    )
-                else:
-                    raise NotImplementedError(PYVERSION)
-                self.assert_prune(
-                    func, (types.NoneType("none"),), [prune], None
-                )
+        for const in c_inp:
+            if PYVERSION in ((3, 14),):
+                # The order of the __code__.co_consts changes with 3.14
+                func = self._literal_const_sample_generator(impl, {0: const})
+            elif PYVERSION in ((3, 10), (3, 11), (3, 12), (3, 13)):
+                func = self._literal_const_sample_generator(impl, {1: const})
+            else:
+                raise NotImplementedError(PYVERSION)
+            self.assert_prune(func, (types.NoneType("none"),), [prune], None)
 
-    def test_single_if_else_const(self):
+    @pytest.mark.parametrize("c_inp,prune", _TRUTHY_FALSEY_TUPLES)
+    def test_single_if_else_const(self, c_inp, prune):
         def impl(x):
             _CONST1 = "PLACEHOLDER1"
             if _CONST1:
@@ -933,24 +922,18 @@ class TestBranchPrunePredicates(TestBranchPruneBase):
             else:
                 return 1.61803
 
-        for c_inp, prune in (self._TRUTHY, False), (self._FALSEY, True):
-            for const in c_inp:
-                if PYVERSION in ((3, 14),):
-                    # The order of the __code__.co_consts changes with 3.14
-                    func = self._literal_const_sample_generator(
-                        impl, {0: const}
-                    )
-                elif PYVERSION in ((3, 10), (3, 11), (3, 12), (3, 13)):
-                    func = self._literal_const_sample_generator(
-                        impl, {1: const}
-                    )
-                else:
-                    raise NotImplementedError(PYVERSION)
-                self.assert_prune(
-                    func, (types.NoneType("none"),), [prune], None
-                )
+        for const in c_inp:
+            if PYVERSION in ((3, 14),):
+                # The order of the __code__.co_consts changes with 3.14
+                func = self._literal_const_sample_generator(impl, {0: const})
+            elif PYVERSION in ((3, 10), (3, 11), (3, 12), (3, 13)):
+                func = self._literal_const_sample_generator(impl, {1: const})
+            else:
+                raise NotImplementedError(PYVERSION)
+            self.assert_prune(func, (types.NoneType("none"),), [prune], None)
 
-    def test_single_if_else_negate_const(self):
+    @pytest.mark.parametrize("c_inp,prune", _TRUTHY_FALSEY_TUPLES)
+    def test_single_if_else_negate_const(self, c_inp, prune):
         def impl(x):
             _CONST1 = "PLACEHOLDER1"
             if not _CONST1:
@@ -958,126 +941,105 @@ class TestBranchPrunePredicates(TestBranchPruneBase):
             else:
                 return 1.61803
 
-        for c_inp, prune in (self._TRUTHY, False), (self._FALSEY, True):
-            for const in c_inp:
-                if PYVERSION in ((3, 14),):
-                    # The order of the __code__.co_consts changes with 3.14
-                    func = self._literal_const_sample_generator(
-                        impl, {0: const}
-                    )
-                elif PYVERSION in ((3, 10), (3, 11), (3, 12), (3, 13)):
-                    func = self._literal_const_sample_generator(
-                        impl, {1: const}
-                    )
+        for const in c_inp:
+            if PYVERSION in ((3, 14),):
+                # The order of the __code__.co_consts changes with 3.14
+                func = self._literal_const_sample_generator(impl, {0: const})
+            elif PYVERSION in ((3, 10), (3, 11), (3, 12), (3, 13)):
+                func = self._literal_const_sample_generator(impl, {1: const})
+            else:
+                raise NotImplementedError(PYVERSION)
+            self.assert_prune(func, (types.NoneType("none"),), [prune], None)
+
+    @pytest.mark.parametrize("c_inp,prune", _TRUTHY_FALSEY_TUPLES)
+    def test_single_if_freevar(self, c_inp, prune):
+        for const in c_inp:
+
+            def func(x):
+                if const:
+                    return 3.14159, const
+
+            self.assert_prune(func, (types.NoneType("none"),), [prune], None)
+
+    @pytest.mark.parametrize("c_inp,prune", _TRUTHY_FALSEY_TUPLES)
+    def test_single_if_negate_freevar(self, c_inp, prune):
+        for const in c_inp:
+
+            def func(x):
+                if not const:
+                    return 3.14159, const
+
+            self.assert_prune(func, (types.NoneType("none"),), [prune], None)
+
+    @pytest.mark.parametrize("c_inp,prune", _TRUTHY_FALSEY_TUPLES)
+    def test_single_if_else_negate_freevar(self, c_inp, prune):
+        for const in c_inp:
+
+            def func(x):
+                if not const:
+                    return 3.14159, const
                 else:
-                    raise NotImplementedError(PYVERSION)
-                self.assert_prune(
-                    func, (types.NoneType("none"),), [prune], None
-                )
+                    return 1.61803, const
 
-    def test_single_if_freevar(self):
-        for c_inp, prune in (self._TRUTHY, False), (self._FALSEY, True):
-            for const in c_inp:
-
-                def func(x):
-                    if const:
-                        return 3.14159, const
-
-                self.assert_prune(
-                    func, (types.NoneType("none"),), [prune], None
-                )
-
-    def test_single_if_negate_freevar(self):
-        for c_inp, prune in (self._TRUTHY, False), (self._FALSEY, True):
-            for const in c_inp:
-
-                def func(x):
-                    if not const:
-                        return 3.14159, const
-
-                self.assert_prune(
-                    func, (types.NoneType("none"),), [prune], None
-                )
-
-    def test_single_if_else_negate_freevar(self):
-        for c_inp, prune in (self._TRUTHY, False), (self._FALSEY, True):
-            for const in c_inp:
-
-                def func(x):
-                    if not const:
-                        return 3.14159, const
-                    else:
-                        return 1.61803, const
-
-                self.assert_prune(
-                    func, (types.NoneType("none"),), [prune], None
-                )
+            self.assert_prune(func, (types.NoneType("none"),), [prune], None)
 
     # globals in this section have absurd names after their test usecase names
     # so as to prevent collisions and permit tests to run in parallel
-    def test_single_if_global(self):
+    @pytest.mark.parametrize("c_inp,prune", _TRUTHY_FALSEY_TUPLES)
+    def test_single_if_global(self, c_inp, prune):
         global c_test_single_if_global
 
-        for c_inp, prune in (self._TRUTHY, False), (self._FALSEY, True):
-            for c in c_inp:
-                c_test_single_if_global = c
+        for c in c_inp:
+            c_test_single_if_global = c
 
-                def func(x):
-                    if c_test_single_if_global:
-                        return 3.14159, c_test_single_if_global
+            def func(x):
+                if c_test_single_if_global:
+                    return 3.14159, c_test_single_if_global
 
-                self.assert_prune(
-                    func, (types.NoneType("none"),), [prune], None
-                )
+            self.assert_prune(func, (types.NoneType("none"),), [prune], None)
 
-    def test_single_if_negate_global(self):
+    @pytest.mark.parametrize("c_inp,prune", _TRUTHY_FALSEY_TUPLES)
+    def test_single_if_negate_global(self, c_inp, prune):
         global c_test_single_if_negate_global
 
-        for c_inp, prune in (self._TRUTHY, False), (self._FALSEY, True):
-            for c in c_inp:
-                c_test_single_if_negate_global = c
+        for c in c_inp:
+            c_test_single_if_negate_global = c
 
-                def func(x):
-                    if c_test_single_if_negate_global:
-                        return 3.14159, c_test_single_if_negate_global
+            def func(x):
+                if c_test_single_if_negate_global:
+                    return 3.14159, c_test_single_if_negate_global
 
-                self.assert_prune(
-                    func, (types.NoneType("none"),), [prune], None
-                )
+            self.assert_prune(func, (types.NoneType("none"),), [prune], None)
 
-    def test_single_if_else_global(self):
+    @pytest.mark.parametrize("c_inp,prune", _TRUTHY_FALSEY_TUPLES)
+    def test_single_if_else_global(self, c_inp, prune):
         global c_test_single_if_else_global
 
-        for c_inp, prune in (self._TRUTHY, False), (self._FALSEY, True):
-            for c in c_inp:
-                c_test_single_if_else_global = c
+        for c in c_inp:
+            c_test_single_if_else_global = c
 
-                def func(x):
-                    if c_test_single_if_else_global:
-                        return 3.14159, c_test_single_if_else_global
-                    else:
-                        return 1.61803, c_test_single_if_else_global
+            def func(x):
+                if c_test_single_if_else_global:
+                    return 3.14159, c_test_single_if_else_global
+                else:
+                    return 1.61803, c_test_single_if_else_global
 
-                self.assert_prune(
-                    func, (types.NoneType("none"),), [prune], None
-                )
+            self.assert_prune(func, (types.NoneType("none"),), [prune], None)
 
-    def test_single_if_else_negate_global(self):
+    @pytest.mark.parametrize("c_inp,prune", _TRUTHY_FALSEY_TUPLES)
+    def test_single_if_else_negate_global(self, c_inp, prune):
         global c_test_single_if_else_negate_global
 
-        for c_inp, prune in (self._TRUTHY, False), (self._FALSEY, True):
-            for c in c_inp:
-                c_test_single_if_else_negate_global = c
+        for c in c_inp:
+            c_test_single_if_else_negate_global = c
 
-                def func(x):
-                    if not c_test_single_if_else_negate_global:
-                        return 3.14159, c_test_single_if_else_negate_global
-                    else:
-                        return 1.61803, c_test_single_if_else_negate_global
+            def func(x):
+                if not c_test_single_if_else_negate_global:
+                    return 3.14159, c_test_single_if_else_negate_global
+                else:
+                    return 1.61803, c_test_single_if_else_negate_global
 
-                self.assert_prune(
-                    func, (types.NoneType("none"),), [prune], None
-                )
+            self.assert_prune(func, (types.NoneType("none"),), [prune], None)
 
     def test_issue_5618(self):
         @jit
@@ -1145,10 +1107,10 @@ class TestBranchPrunePostSemanticConstRewrites(TestBranchPruneBase):
             float.as_integer_ratio(1.23)
 
         # this should raise a TypingError
-        with self.assertRaises(errors.TypingError) as e:
+        with pytest.raises(errors.TypingError) as e:
             test[1, 1]()
 
-        self.assertIn("Unknown attribute 'as_integer_ratio'", str(e.exception))
+        assert "Unknown attribute 'as_integer_ratio'" in str(e.value)
 
     def test_ndim_not_on_array(self):
         FakeArray = collections.namedtuple("FakeArray", ["ndim"])
