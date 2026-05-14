@@ -4,7 +4,9 @@
 import os
 import platform
 import shutil
+
 import pytest
+
 from cuda import pathfinder
 from datetime import datetime
 from numba.cuda.utils import PYVERSION
@@ -199,7 +201,7 @@ skip_on_standalone_numba_cuda = unittest.skipUnless(
 def skip_unless_cudasim(reason):
     """Skip this test if running on CUDA hardware"""
     assert isinstance(reason, str)
-    return unittest.skipUnless(config.ENABLE_CUDASIM, reason)
+    return pytest.mark.skipif(not config.ENABLE_CUDASIM, reason=reason)
 
 
 def skip_unless_conda_cudatoolkit(reason):
