@@ -2,13 +2,14 @@
 # SPDX-License-Identifier: BSD-2-Clause
 
 import numpy as np
+import pytest
+
 from numba import cuda
 from numba.cuda.np.numpy_support import from_dtype
-from numba.cuda.testing import skip_on_cudasim, CUDATestCase
-import unittest
+from numba.cuda.testing import skip_on_cudasim
 
 
-class TestAlignment(CUDATestCase):
+class TestAlignment:
     def test_record_alignment(self):
         rec_dtype = np.dtype([("a", "int32"), ("b", "float64")], align=True)
         rec = from_dtype(rec_dtype)
@@ -26,22 +27,18 @@ class TestAlignment(CUDATestCase):
 
         foo[1, 3](a_recarray)
 
-        self.assertTrue(np.all(a_recarray.a == a_recarray.b))
+        assert np.all(a_recarray.a == a_recarray.b)
 
     @skip_on_cudasim("Simulator does not check alignment")
     def test_record_alignment_error(self):
         rec_dtype = np.dtype([("a", "int32"), ("b", "float64")])
         rec = from_dtype(rec_dtype)
 
-        with self.assertRaises(Exception) as raises:
+        with pytest.raises(Exception) as raises:
 
             @cuda.jit((rec[:],))
             def foo(a):
                 i = cuda.grid(1)
                 a[i].a = a[i].b
 
-        self.assertTrue("type float64 is not aligned" in str(raises.exception))
-
-
-if __name__ == "__main__":
-    unittest.main()
+        assert "type float64 is not aligned" in str(raises.value)
