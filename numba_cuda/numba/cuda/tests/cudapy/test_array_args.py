@@ -1,14 +1,13 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: BSD-2-Clause
 
-import numpy as np
 from collections import namedtuple
+import numpy as np
 
 from numba import cuda
-from numba.cuda.testing import unittest, CUDATestCase
 
 
-class TestCudaArrayArg(CUDATestCase):
+class TestCudaArrayArg:
     def test_array_ary(self):
         @cuda.jit("double(double[:],int64)", device=True, inline="always")
         def device_function(a, c):
@@ -22,7 +21,7 @@ class TestCudaArrayArg(CUDATestCase):
         x = np.arange(10, dtype=np.double)
         y = np.zeros_like(x)
         kernel[10, 1](x, y)
-        self.assertTrue(np.all(x == y))
+        assert np.all(x == y)
 
     def test_unituple(self):
         @cuda.jit
@@ -36,7 +35,7 @@ class TestCudaArrayArg(CUDATestCase):
         f[1, 1](r, x)
 
         for i in range(len(x)):
-            self.assertEqual(r[i], x[i])
+            assert r[i] == x[i]
 
     def test_tuple(self):
         @cuda.jit
@@ -54,10 +53,10 @@ class TestCudaArrayArg(CUDATestCase):
         f[1, 1](r1, r2, x)
 
         for i in range(len(r1)):
-            self.assertEqual(r1[i], x[i])
+            assert r1[i] == x[i]
 
         for i in range(len(r2)):
-            self.assertEqual(r2[i], x[i + len(r1)])
+            assert r2[i] == x[i + len(r1)]
 
     def test_namedunituple(self):
         @cuda.jit
@@ -70,8 +69,8 @@ class TestCudaArrayArg(CUDATestCase):
         r = np.zeros(len(x), dtype=np.int64)
         f[1, 1](r, x)
 
-        self.assertEqual(r[0], x.x)
-        self.assertEqual(r[1], x.y)
+        assert r[0] == x.x
+        assert r[1] == x.y
 
     def test_namedtuple(self):
         @cuda.jit
@@ -86,9 +85,9 @@ class TestCudaArrayArg(CUDATestCase):
         r2 = np.zeros(1, dtype=np.float64)
         f[1, 1](r1, r2, x)
 
-        self.assertEqual(r1[0], x.x)
-        self.assertEqual(r1[1], x.y)
-        self.assertEqual(r2[0], x.r)
+        assert r1[0] == x.x
+        assert r1[1] == x.y
+        assert r2[0] == x.r
 
     def test_empty_tuple(self):
         @cuda.jit
@@ -99,7 +98,7 @@ class TestCudaArrayArg(CUDATestCase):
         r = np.ones(1, dtype=np.int64)
         f[1, 1](r, x)
 
-        self.assertEqual(r[0], 0)
+        assert r[0] == 0
 
     def test_tuple_of_empty_tuples(self):
         @cuda.jit
@@ -111,8 +110,8 @@ class TestCudaArrayArg(CUDATestCase):
         r = np.ones(2, dtype=np.int64)
         f[1, 1](r, x)
 
-        self.assertEqual(r[0], 3)
-        self.assertEqual(r[1], 0)
+        assert r[0] == 3
+        assert r[1] == 0
 
     def test_tuple_of_tuples(self):
         @cuda.jit
@@ -131,15 +130,15 @@ class TestCudaArrayArg(CUDATestCase):
         r = np.ones(9, dtype=np.int64)
         f[1, 1](r, x)
 
-        self.assertEqual(r[0], 3)
-        self.assertEqual(r[1], 0)
-        self.assertEqual(r[2], 2)
-        self.assertEqual(r[3], 3)
-        self.assertEqual(r[4], 5)
-        self.assertEqual(r[5], 6)
-        self.assertEqual(r[6], 8)
-        self.assertEqual(r[7], 9)
-        self.assertEqual(r[8], 10)
+        assert r[0] == 3
+        assert r[1] == 0
+        assert r[2] == 2
+        assert r[3] == 3
+        assert r[4] == 5
+        assert r[5] == 6
+        assert r[6] == 8
+        assert r[7] == 9
+        assert r[8] == 10
 
     def test_tuple_of_tuples_and_scalars(self):
         @cuda.jit
@@ -155,12 +154,12 @@ class TestCudaArrayArg(CUDATestCase):
         r = np.ones(9, dtype=np.int64)
         f[1, 1](r, x)
 
-        self.assertEqual(r[0], 2)
-        self.assertEqual(r[1], 3)
-        self.assertEqual(r[2], 6)
-        self.assertEqual(r[3], 5)
-        self.assertEqual(r[4], 4)
-        self.assertEqual(r[5], 7)
+        assert r[0] == 2
+        assert r[1] == 3
+        assert r[2] == 6
+        assert r[3] == 5
+        assert r[4] == 4
+        assert r[5] == 7
 
     def test_tuple_of_arrays(self):
         @cuda.jit
@@ -192,12 +191,8 @@ class TestCudaArrayArg(CUDATestCase):
         r = np.zeros(5, dtype=np.int64)
         f[1, 1](r, x)
 
-        self.assertEqual(r[0], 0)
-        self.assertEqual(r[1], 2)
-        self.assertEqual(r[2], 10)
-        self.assertEqual(r[3], 4)
-        self.assertEqual(r[4], 3)
-
-
-if __name__ == "__main__":
-    unittest.main()
+        assert r[0] == 0
+        assert r[1] == 2
+        assert r[2] == 10
+        assert r[3] == 4
+        assert r[4] == 3
